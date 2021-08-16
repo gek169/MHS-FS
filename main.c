@@ -25,12 +25,14 @@
 /*
 	~~~~~~~~~~~~~~~~~~~~~~~CONFIGURABLES~~~~~~~~~~~~~~~~~~~
 */
-/*#define DISK_SIZE 0x20000000*/
-#define DISK_SIZE 0x40000
+/*How many sectors are on the disk?*/
+#define DISK_SIZE 0x10000
+/*Sector size?*/
+#define SECTOR_SIZE 512
 /*How many sectors to "skip" for some boot code or MBR*/
 #define SECTOR_OFFSET 0
-#define BITMAP_START 0x10
-#define SECTOR_SIZE 512
+#define BITMAP_START 0x20
+
 #define IS_DIRECTORY 32768
 #define IS_SUID 16384
 #define OWNER_R 8192
@@ -48,6 +50,7 @@
 #define UNUSED_PERM_2 4
 #define UNUSED_PERM_3 2
 #define UNUSED_PERM_4 1
+
 typedef unsigned int uint_dsk; /*32 or 64 bit integer.*/
 typedef unsigned short ushort; /*16 bit unsigned int.*/
 FILE* f; /*the disk.*/
@@ -150,12 +153,32 @@ void sector_write_dptr(sector* sect, uint_dsk val){
 }
 
 
+uint_dsk sector_fetch_size(sector* sect){
+	uint_dsk loc = 0;
+	loc+= 2; /*permission bits.*/
+	loc+= sizeof(uint_dsk); /*ownerid*/
+	loc+= sizeof(uint_dsk); /*rptr*/
+	loc+= sizeof(uint_dsk); /*dptr*/
+	return sector_read_uint_dsk(sect, loc);
+}
+
+void sector_write_size(sector* sect, uint_dsk val){
+	uint_dsk loc = 0;
+	loc+= 2; /*permission bits.*/
+	loc+= sizeof(uint_dsk); /*ownerid*/
+	loc+= sizeof(uint_dsk); /*rptr*/
+	loc+= sizeof(uint_dsk); /*dptr*/
+	sector_write_uint_dsk(sect, loc, val);
+}
+
+
 char* sector_fetch_fname(sector* sect){
 	uint_dsk loc = 0;
 	loc+= 2; /*permission bits.*/
 	loc+= sizeof(uint_dsk); /*ownerid*/
 	loc+= sizeof(uint_dsk); /*rptr*/
 	loc+= sizeof(uint_dsk); /*dptr*/
+	loc+= sizeof(uint_dsk); /*size*/
 	if(sect->data[SECTOR_SIZE - 1]){
 		sect->data[SECTOR_SIZE - 1] = '\0'; /*guarantee null termination. This was a malformed file entry.*/
 	}
@@ -169,6 +192,7 @@ void sector_write_fname(sector* sect, char* newname){
 	loc+= sizeof(uint_dsk); /*ownerid*/
 	loc+= sizeof(uint_dsk); /*rptr*/
 	loc+= sizeof(uint_dsk); /*dptr*/
+	loc+= sizeof(uint_dsk); /*size*/
 	for(i = loc; i < SECTOR_SIZE-1; i++){
 	/*Handle the case of a preceding period.*/
 		if(i == loc && newname[i - loc] == '.')
@@ -214,25 +238,12 @@ static void store_sector(uint_dsk where, sector* s){
 	fwrite(s->data, 1, SECTOR_SIZE, f);
 }
 
+
+
 /*
 	Get the root node.
 */
 static sector get_rootnode(){ return load_sector(0); }
-/*
-	Given a sector which is presumably a file node, retrieve the file size.
-*/
-static uint_dsk get_data_filesize(sector* sect){
-	sector bruh;
-	if(sector_is_directory(sect)) return 0; /*We */
-	uint_dsk datapointer = sector_fetch_dptr(sect);
-	if(datapointer == 0) return 0;
-	bruh = load_sector(datapointer);
-	return sector_read_uint_dsk(&bruh, 0);
-}
-
-static void set_filesize(sector* sect, uint_dsk val){
-	sector_write_uint_dsk(sect, 0, val);
-}
 /*
 	Given a sector, fetch the sector its data pointer is pointing to.
 */
@@ -242,6 +253,83 @@ static sector get_datasect(sector* sect){
 	if(datapointer == 0) return bruh;
 	bruh = load_sector(datapointer);
 	return bruh;
+}
+
+
+/*
+	Attain lock for modifying the hard disk.
+
+	Whenever we modify the hard disk, we must do it in such a way that a recovery can be done simply
+	by re-calculating the bitmap.
+
+	This means that attaching things to the file system is actually the last step-
+	the filesystem must remain recoverable simply by recalculating the bitmap.
+
+	This often requires strange orders of events.
+
+	Things listed on the same line can occur in any order.
+
+	To delete a file:
+	lock()
+	assign next pointer
+	deallocate data & deallocate file
+	unlock()
+
+	To create a new file:
+	lock()
+	allocate space in bitmap
+	write file node & write file data
+	link the new file's right node to the correct right node. 
+	link an old file's right node, or a directory's data node.
+	unlock()
+
+	To expand an existing file:
+	lock()
+	allocate space in bitmap if necessary.
+	modify size (a crash at this point would cause the file to simply have junk at the end rather than the intended data.)
+	write excess bytes
+	unlock()
+
+	To shrink an existing file:
+	lock()
+	modify size
+	deallocate in bitmap, if necessary.
+	unlock()
+
+	If the shrinking in size will not result in a change in the bitmap, then no lock needs to be attained.
+
+	To re-allocate a file
+	lock()
+	allocate space in bitmap
+	write new file node & write file data (the old one is left alone...)
+	link the new file's right node
+	link an old file's right node, or a directory's data node.
+	deallocate the old file & deallocate the old data.
+	unlock()
+
+	To create a directory:
+	(Same as creating a file, but data is NULL by default.)
+
+	To delete a directory:
+	* Delete all child files first.
+	* Perform file deletion.
+	
+	
+*/
+static void lock_modify_bit(){
+	sector a,b;
+	a = load_sector(0);
+	b = get_datasect(&a);
+	b.data[0] |= 1;
+	store_sector(sector_fetch_dptr(&a), &b);
+}
+
+static void unlock_modify_bit(){
+	sector a,b;
+	a = load_sector(0);
+	b = get_datasect(&a);
+	b.data[0] &= ~1;
+	store_sector(sector_fetch_dptr(&a), &b);
 }
 /*
 	Now, the right pointer.
@@ -260,56 +348,52 @@ static sector get_rightsect(sector* sect){
 
 static void disk_init(){
 	/*BITMAP_LOCATION*/
-	const uint_dsk bitmap_loc = 0x10; /*16 sectors in.*/
-	{	
+	uint_dsk allocation_bitmap_size = BITMAP_START;
+	allocation_bitmap_size = (DISK_SIZE  - SECTOR_OFFSET)/8;
+	{
 		sector bruh = {0};
 		sector_write_perm_bits(&bruh, OWNER_R | PUBLIC_R);
 		sector_write_fname(&bruh, "some very long text i am testing");
-		sector_write_dptr(&bruh, bitmap_loc); 
+		sector_write_dptr(&bruh, BITMAP_START);
+		sector_write_size(&bruh, allocation_bitmap_size);
 		store_sector(0, &bruh);
 	}
 	/*BITMAP INITIALIZATION*/
 	{
 		uint_dsk i = 0;
-		uint_dsk j = bitmap_loc;
-		uint_dsk allocation_bitmap_size = BITMAP_START;
+		uint_dsk j = BITMAP_START;
 		sector bruh = {0};
-		allocation_bitmap_size = DISK_SIZE;
-		allocation_bitmap_size /= SECTOR_SIZE; /*How many sectors can we fit into the disk?*/
-		allocation_bitmap_size -= SECTOR_OFFSET; /*How many sectors are reserved at the start?*/
-		allocation_bitmap_size /= 8; /*8 bits in a byte.*/
-		for(i = sizeof(uint_dsk)+1; i < allocation_bitmap_size; i++){
-		/*
-			the extra byte is a "status" byte- whenever the disk is being modified, it gets set to something.
-		*/
+		for(i = 0; i < allocation_bitmap_size; i++){
 			unsigned char val = 0;
 			/*are we inside of area of the bitmap, which marks the area for the bitmap???*/
 			{
-				uint_dsk work = i - (sizeof(uint_dsk)+1);
-				work *= 8; /*Which bits are we working on, I.E. what sectors are we currently generating a bitmap for?*/
+				uint_dsk work = i * 8; /*Which bits are we working on, I.E. what sectors are we currently generating a bitmap for?*/
+				
 				/*
 				If any of these are within the allocation bitmap, we must mark them as allocated! The bitmap 
 				must reflect its own existence so that the allocator won't allocate overtop of it!
 				*/
-				/*the first sector is used by the root node! Obviously it is taken.*/
-				if(work == 0) val |= 1;
-				if(((work + 0) > bitmap_loc) && ((work + 0) < (bitmap_loc + allocation_bitmap_size)))val |= 1;
-				if(((work + 1) > bitmap_loc) && ((work + 1) < (bitmap_loc + allocation_bitmap_size)))val |= 2;
-				if(((work + 2) > bitmap_loc) && ((work + 2) < (bitmap_loc + allocation_bitmap_size)))val |= 4;
-				if(((work + 3) > bitmap_loc) && ((work + 3) < (bitmap_loc + allocation_bitmap_size)))val |= 8;
-				if(((work + 4) > bitmap_loc) && ((work + 4) < (bitmap_loc + allocation_bitmap_size)))val |= 16;
-				if(((work + 5) > bitmap_loc) && ((work + 5) < (bitmap_loc + allocation_bitmap_size)))val |= 32;
-				if(((work + 6) > bitmap_loc) && ((work + 6) < (bitmap_loc + allocation_bitmap_size)))val |= 64;
-				if(((work + 7) > bitmap_loc) && ((work + 7) < (bitmap_loc + allocation_bitmap_size)))val |= 128;
+				/*
+				the first sector is used by the root node! Obviously it is taken.
+				So it's implicit. We use its bit to store the whether or not the filesystem is in use or not.
+				*/
+				if(((work + 0) >= BITMAP_START) && ((work + 0) < (BITMAP_START + allocation_bitmap_size)))val |= 1;
+				if(((work + 1) >= BITMAP_START) && ((work + 1) < (BITMAP_START + allocation_bitmap_size)))val |= 2;
+				if(((work + 2) >= BITMAP_START) && ((work + 2) < (BITMAP_START + allocation_bitmap_size)))val |= 4;
+				if(((work + 3) >= BITMAP_START) && ((work + 3) < (BITMAP_START + allocation_bitmap_size)))val |= 8;
+				if(((work + 4) >= BITMAP_START) && ((work + 4) < (BITMAP_START + allocation_bitmap_size)))val |= 16;
+				if(((work + 5) >= BITMAP_START) && ((work + 5) < (BITMAP_START + allocation_bitmap_size)))val |= 32;
+				if(((work + 6) >= BITMAP_START) && ((work + 6) < (BITMAP_START + allocation_bitmap_size)))val |= 64;
+				if(((work + 7) >= BITMAP_START) && ((work + 7) < (BITMAP_START + allocation_bitmap_size)))val |= 128;
 				bruh.data[i % SECTOR_SIZE] = val;
 			}
-			if((i % SECTOR_SIZE) == 0){
+			if((i % SECTOR_SIZE) == (SECTOR_SIZE - 1)){
 				store_sector(j, &bruh); ++j;
 				memset(bruh.data, 0, SECTOR_SIZE);
 			}
 		}
 		i--;
-		if((i % SECTOR_SIZE) != 0){
+		if((i % SECTOR_SIZE) != (SECTOR_SIZE - 1)){ /*The sector wasn't stored properly.*/
 			store_sector(j, &bruh); ++j;
 			memset(bruh.data, 0, SECTOR_SIZE);
 		}
@@ -323,7 +407,8 @@ int main(int argc, char** argv){
 		unsigned long i;
 		f = fopen("disk.dsk", "wb");
 		if(!f) return 1;
-		for(i = 0; i < DISK_SIZE; i++)fputc(0, f);
+		for(i = 0; i < (DISK_SIZE * SECTOR_SIZE); i++)
+			fputc(0, f);
 		fclose(f);
 		f = fopen("disk.dsk", "rb+");
 		disk_init();
