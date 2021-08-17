@@ -824,8 +824,7 @@ static char createEmpty(
 */
 
 static void disk_init(){
-	/*BITMAP_LOCATION*/
-	uint_dsk allocation_bitmap_size = BITMAP_START;
+	uint_dsk allocation_bitmap_size;
 	allocation_bitmap_size = (DISK_SIZE  - SECTOR_OFFSET)/8; /*NUMBER OF BYTES. Not number of sectors.*/
 	{
 		sector bruh = {0};
@@ -834,8 +833,19 @@ static void disk_init(){
 		sector_write_dptr(&bruh, BITMAP_START);
 		sector_write_size(&bruh, allocation_bitmap_size);
 		store_sector(0, &bruh);
+
+		bitmap_alloc_nodes(
+				allocation_bitmap_size,
+				BITMAP_START,
+				BITMAP_START,
+				sector_fetch_size_in_sectors(&bruh) /*how many contiguous sectors do we need?*/
+			);
 	}
-	/*BITMAP INITIALIZATION*/
+
+	
+
+	return;
+	/*BITMAP INITIALIZATION- OLD CODE*/
 	{
 		uint_dsk i = 0;
 		uint_dsk j = BITMAP_START;
