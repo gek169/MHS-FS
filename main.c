@@ -669,14 +669,16 @@ static uint_dsk resolve_path(
 		&& 	path[strlen(path)-1] == '/'
 	) path[strlen(path)-1] = '\0';
 	if(strlen(path) == 0) return 0; /*Repeat the check. I dont think it's possible for this to ever trigger... but it's here.*/
-	/*Remove repeated slashes.*/
-	{long loc = strfind(path, "//");while(loc != -1){
-		my_strcpy(
-			path + loc,
-			path + loc+1
-		);
-		loc = strfind(path, "//");
-	}}
+	/*Remove repeated slashes. Thanks Applejar.*/
+	{char* a; char* b;
+		a = path; b = path;
+		for (;;) {
+		    while (a[0] == '/' && a[1] == '/') a++;
+		    *b = *a;
+		    if(*a == '\0') break;
+		    a++; b++;
+		}
+	}
 	if(strlen(path) == 0) return 0; /*Repeat the check.*/
 	fname = path;
 	while(strfind(fname, "/") != -1) fname += strfind(fname, "/"); /*Skip all slashes.*/
