@@ -57,6 +57,10 @@ typedef struct{
 	unsigned char data[SECTOR_SIZE];
 } sector;
 
+typedef struct{
+	char d[SECTOR_SIZE - (4 * sizeof(uint_dsk) + 2)];
+} fname_string;
+
 static void sector_write_byte(sector* sect, uint_dsk loc, unsigned char byte){
 	loc %= (SECTOR_SIZE - 1);sect->data[loc] = byte;
 }
@@ -699,7 +703,7 @@ static uint_dsk resolve_path(
 			candidate_node = walk_nodes_right(current_node_searching, path);
 			if(slashloc != -1) {
 				path[slashloc] = '/';
-				path += slashloc;
+				path += slashloc + 1; /*Must skip the slash too.*/
 				if(candidate_node == 0)	return 0;
 				else current_node_searching = candidate_node;
 			} else {
@@ -717,36 +721,70 @@ static char node_exists_in_directory(uint_dsk directory_node_ptr, char* target_n
 	sector s;
 	uint_dsk dptr;
 	s = load_sector(directory_node_ptr);
-	dptr = sector_fetch_dptr(&s);
+	if(directory_node_ptr) /*SPECIAL CASE- the root node.*/
+		dptr = sector_fetch_dptr(&s);
+	else
+		dptr = sector_fetch_rptr(&s);
 	if(dptr == 0) return 0; /*Zero entries in the directory.*/
 	if(walk_nodes_right(dptr, target_name)) return 1;
 	return 0;
 }
+
+static void append_node_right(uint_dsk sibling, uint_dsk newbie){
+	sector s, s2;
+	s = load_sector(sibling);
+	s2 = load_sector(newbie);
+	/*
+		The old rptr of the sibling is the rptr of the new node.
+	*/
+	sector_write_rptr(
+		&s2, 
+		sector_fetch_rptr(&s)
+	);
+
+	/*
+		The guy on the left needs to know!
+	*/
+	sector_write_rptr(
+		&s, 
+		newbie
+	);
+	store_sector(newbie, &s2); /*A crash here will cause an extra file node to exist on the disk which is pointed to by nothing.*/
+	store_sector(sibling, &s); /*A crash here will do nothing*/
+}
+
 /*
 	Append node to directory.
 	MUST BE LOCKED ON ENTRY.
 	ALLOCATION BITMAP NOT UPDATED (LOW LEVEL ROUTINE).
 */
 static void append_node_to_dir(uint_dsk directory_node_ptr, uint_dsk new_node){
-	sector s, s2;
-	s = load_sector(directory_node_ptr);
-	s2 = load_sector(new_node);
-	/*
-		The old dptr of the directory is the rptr of the new node.
-	*/
-	sector_write_rptr(
-		&s2, 
-		sector_fetch_dptr(&s)
-	);
-	/*
-		The directory needs a new dptr which points to the new node.
-	*/
-	sector_write_dptr(
-		&s, 
-		new_node
-	);
-	store_sector(new_node, &s2); /*A crash here will cause an extra file node to exist on the disk which is pointed to by nothing.*/
-	store_sector(directory_node_ptr, &s); /*A crash here will do nothing*/
+	if(directory_node_ptr == 0){ /*SPECIAL CASE- trying to create a new file in root.*/
+		append_node_right(directory_node_ptr, new_node);
+		return;
+	}
+	{
+		sector s, s2;
+		
+		s = load_sector(directory_node_ptr);
+		s2 = load_sector(new_node);
+		/*
+			The old dptr of the directory is the rptr of the new node.
+		*/
+		sector_write_rptr(
+			&s2, 
+			sector_fetch_dptr(&s)
+		);
+		/*
+			The directory needs a new dptr which points to the new node.
+		*/
+		sector_write_dptr(
+			&s, 
+			new_node
+		);
+		store_sector(new_node, &s2); /*A crash here will cause an extra file node to exist on the disk which is pointed to by nothing.*/
+		store_sector(directory_node_ptr, &s); /*A crash here will do nothing*/
+	}
 }
 /*
 	Remove the righthand node.
@@ -807,14 +845,24 @@ static char node_remove_down(uint_dsk parent){
 	the path must *NOT* end in a slash.
 */
 static char createEmpty(
-	char* path,
+	char* path, /**/
+	char* fname,
 	ushort permbits /*the permission bits, including whether or not it is a directory*/
 ){
+	uint_dsk directorynode;
+	uint_dsk bitmap_size;
+	uint_dsk bitmap_where;
 	if(strlen(path) == 0) return 0; /*Cannot create a directory with no name!*/
-	char* fname = path;
-	while(strfind(fname, "/") != -1) fname += strfind(fname, "/"); /*Skip all slashes.*/
 	if(strlen(fname) == 0) return 0; /*Cannot create a directory with no name!*/
+
+	get_allocation_bitmap_info(&bitmap_size, &bitmap_where);
+	directorynode = resolve_path(path);
+
+	lock_modify_bit();
 	/*TODO*/
+
+	unlock_modify_bit();
+	
 	return 1;
 }
 
