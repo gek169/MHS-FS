@@ -7,18 +7,17 @@
 	BITMAP_LOCATION - where the bitmap is stored by default. It can be moved later, of course.
 
 */
-
-
-
-
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
-
-
-
+#include <string.h>
 
 #include "stringutil.h"
+
+
+void my_strcpy(char* dest, char* src){
+	while(*src) *dest++ = *src++;
+	*dest = 0;
+}
 
 /*0x20000000 is 512 megs*/
 
@@ -187,6 +186,46 @@ char* sector_fetch_fname(sector* sect){
 	return (char*)sect->data + loc;
 }
 
+void namesan(char* name){
+	uint_dsk i = 0;
+	if(
+		strlen(name) > 
+		SECTOR_SIZE - (
+			2 + 
+			(4 * sizeof(uint_dsk))
+		)
+	)
+		name[SECTOR_SIZE - (
+					2 + 
+					(4 * sizeof(uint_dsk))
+				)] = '\0';
+	while(*name){
+		if(i == 0 && *name == '.')
+			*name = '_';
+		/*
+			ALLOWED_FILENAME_CHARACTERS
+		*/
+		if(
+			(!isalnum(*name)) &&
+			(*name != '_') &&
+			(*name != ' ') &&
+			(*name != '.') &&
+			(*name != '!') &&
+			(*name != '\0') /*Obviously don't overwrite the null terminator.*/
+		)
+			*name = '_';
+		name++;
+	}
+}
+
+
+/*
+	IMPORTANT- newname must NOT be a const char*
+
+	this means you cannot simply use "my string"
+	you must strdup it.
+*/
+
 void sector_write_fname(sector* sect, char* newname){
 	uint_dsk loc = 0;
 	uint_dsk i;
@@ -195,25 +234,9 @@ void sector_write_fname(sector* sect, char* newname){
 	loc+= sizeof(uint_dsk); /*rptr*/
 	loc+= sizeof(uint_dsk); /*dptr*/
 	loc+= sizeof(uint_dsk); /*size*/
+	namesan(newname);
 	for(i = loc; i < SECTOR_SIZE-1; i++){
-	/*Handle the case of a preceding period.*/
-		if(i == loc && newname[i - loc] == '.')
-			sect->data[loc] = '_';
-		else
-			sect->data[i] = newname[i - loc];
-
-		/*
-			ALLOWED_FILENAME_CHARACTERS
-		*/
-		if(
-			(!isalnum(newname[i - loc])) &&
-			(newname[i - loc] != '_') &&
-			(newname[i - loc] != ' ') &&
-			(newname[i - loc] != '.') &&
-			(newname[i - loc] != '!') &&
-			(newname[i - loc] != '\0') /*Obviously don't overwrite the null terminator.*/
-		)
-			sect->data[i] = '_';
+		sect->data[i] = newname[i - loc];
 		if(newname[i - loc] == '\0') return;
 	}
 	sect->data[SECTOR_SIZE-1] = '\0';
@@ -238,6 +261,9 @@ uint_dsk sector_fetch_size_in_sectors(sector* sect){
 static sector load_sector(uint_dsk where){
 	sector bruh;
 	where += SECTOR_OFFSET;
+	if(where >= DISK_SIZE){
+		printf("<ERROR> Attempted to load sector %lu which is beyond sector bounds.", (unsigned long)where);
+	}
 	fseek(f, where * SECTOR_SIZE, SEEK_SET);
 	fread(bruh.data, 1, SECTOR_SIZE, f);
 	return bruh;
@@ -247,6 +273,9 @@ static sector load_sector(uint_dsk where){
 */
 static void store_sector(uint_dsk where, sector* s){
 	where += SECTOR_OFFSET;
+	if(where >= DISK_SIZE){
+		printf("<ERROR> Attempted to load sector %lu which is beyond sector bounds.", (unsigned long)where);
+	}
 	fseek(f, where * SECTOR_SIZE, SEEK_SET);
 	fwrite(s->data, 1, SECTOR_SIZE, f);
 }
@@ -454,9 +483,9 @@ static uint_dsk bitmap_find_and_alloc_multiple_nodes(
 	/*How many are actually needed?*/
 	uint_dsk needed
 ){
- 	uint_dsk i = bitmap_where + (bitmap_size / SECTOR_SIZE); /*We do **NOT** start at zero.*/
+ 	uint_dsk i = bitmap_where + (bitmap_size / SECTOR_SIZE); /*Begin searching the disk beyond the bitmap.*/
  	uint_dsk run = 0;
- 	uint_dsk bitmap_offset = i / (8 * SECTOR_SIZE); /*What */
+ 	uint_dsk bitmap_offset = i / (8 * SECTOR_SIZE); /*What sector of the bitmap are we searching?*/
  	sector s;
  	if(needed == 0) return 0;
  	if(needed == 1) return bitmap_find_and_alloc_single_node(bitmap_size, bitmap_where);
@@ -571,14 +600,19 @@ static sector get_rightsect(sector* sect){
 	deallocate the old file & deallocate the old data.
 	unlock()
 
+	To move a file
+	
+	* create a new file (see creating a new file)
+	* delete old file's dptr
+	* write new file's dptr to be the old file's dptr
+	* 
+
 	To create a directory:
 	(Same as creating a file, but data is NULL by default.)
 
 	To delete a directory:
 	* Delete all child files first.
 	* Perform file deletion.
-	
-	
 */
 static void lock_modify_bit(){
 	sector a,b;
@@ -610,10 +644,67 @@ static uint_dsk walk_nodes_right(
 			start_node_id = sector_fetch_rptr(&s);
 			continue;
 		}
-		if(strcmp(sector_fetch_fname(&s), target_name) == 0)
+		if(strcmp(sector_fetch_fname(&s), target_name) == 0) /*Identical!*/
 			return start_node_id;
 		start_node_id = sector_fetch_rptr(&s);
 		if(start_node_id == 0) return 0; /*reached the end of the directory. Bust! Couldn't find it.*/
+	}
+}
+
+/*
+	Follow an absolute path starting at the root.
+	The path may never resolve to the root directory node, as it does not exist.
+
+	The path may *only* resolve to a file.
+*/
+
+static uint_dsk resolve_path(
+	char* path
+){
+	char* fname;
+	while(*path == '/') path++; /*Skip preceding slashes.*/
+	if(strlen(path) == 0) return 0; /*Cannot create a directory with no name!*/
+	while(
+			strlen(path) 
+		&& 	path[strlen(path)-1] == '/'
+	) path[strlen(path)-1] = '\0';
+	if(strlen(path) == 0) return 0; /*Repeat the check. I dont think it's possible for this to ever trigger... but it's here.*/
+	/*Remove repeated slashes.*/
+	{long loc = strfind(path, "//");while(loc != -1){
+		my_strcpy(
+			path + loc,
+			path + loc+1
+		);
+		loc = strfind(path, "//");
+	}}
+	if(strlen(path) == 0) return 0; /*Repeat the check.*/
+	fname = path;
+	while(strfind(fname, "/") != -1) fname += strfind(fname, "/"); /*Skip all slashes.*/
+	if(strlen(fname) == 0) return 0; /*Cannot create a directory with no name!*/
+	namesan(fname); /*Sanitize the name.*/
+	/*Walk the tree. We use the path to do this.*/
+	{
+		uint_dsk current_node_searching = 0;
+		uint_dsk candidate_node = 0;
+		while(1){
+			long slashloc = strfind(path, "/");
+			if(slashloc == 0){
+				printf("<INTERNAL ERROR> Failed to sanitize path?");
+				exit(1);
+			}
+			if(slashloc != -1) path[slashloc] = '\0';
+			
+			candidate_node = walk_nodes_right(current_node_searching, path);
+			if(slashloc != -1) {
+				path[slashloc] = '/';
+				path += slashloc;
+				if(candidate_node == 0)	return 0;
+				else current_node_searching = candidate_node;
+			} else {
+				/*Whatever we got, it's it!*/
+				return candidate_node;
+			}
+		}
 	}
 }
 
@@ -656,12 +747,12 @@ static void append_node_to_dir(uint_dsk directory_node_ptr, uint_dsk new_node){
 	store_sector(directory_node_ptr, &s); /*A crash here will do nothing*/
 }
 /*
-	Delete the righthand node.
+	Remove the righthand node.
 	MUST BE LOCKED ON ENTRY.
 	ALLOCATION BITMAP NOT UPDATED (LOW LEVEL ROUTINE).
 */
 
-static char node_delete_right(uint_dsk sibling){
+static char node_remove_right(uint_dsk sibling){
 	sector s, sdeleteme;
 	uint_dsk deletemeid;
 	s = load_sector(sibling);
@@ -674,7 +765,7 @@ static char node_delete_right(uint_dsk sibling){
 		A directory with contents cannot be deleted. You must delete all the files in it first.
 	*/
 	if(
-			sector_is_directory(&sdeleteme) 
+			sector_is_directory(&sdeleteme)
 		&&	sector_fetch_dptr(&sdeleteme)
 	){
 		return 0; /*Failure! Cannot delete node- it is a directory with contents.*/
@@ -686,6 +777,45 @@ static char node_delete_right(uint_dsk sibling){
 	store_sector(sibling, &s);
 	return 1;
 }
+
+/*
+	Remove the first entry in a directory.
+	MUST BE LOCKED ON ENTRY.
+	ALLOCATION BITMAP NOT UPDATED (LOW LEVEL ROUTINE).
+*/
+static char node_remove_down(uint_dsk parent){
+	sector s, sdeleteme;
+	uint_dsk deletemeid;
+	s = load_sector(parent);
+	if(!sector_is_directory(&s)) return 0; /*Not a directory... can't do it, sorry.*/
+	deletemeid = sector_fetch_dptr(&s);
+	if(deletemeid == 0) return 0; /*We cannot remove a node that does not exist.*/
+	sdeleteme = load_sector(deletemeid);
+	/*we need to assign the parent's new dptr.*/
+	sector_write_dptr(
+		&s, /*parent node sector*/
+		sector_fetch_rptr(&sdeleteme) /*The entry's righthand pointer.*/
+	);
+	store_sector(parent, &s);
+	return 1;
+}
+/*
+	API call for creating an empty file or directory.
+
+	the path must *NOT* end in a slash.
+*/
+static char createEmpty(
+	char* path,
+	ushort permbits /*the permission bits, including whether or not it is a directory*/
+){
+	if(strlen(path) == 0) return 0; /*Cannot create a directory with no name!*/
+	char* fname = path;
+	while(strfind(fname, "/") != -1) fname += strfind(fname, "/"); /*Skip all slashes.*/
+	if(strlen(fname) == 0) return 0; /*Cannot create a directory with no name!*/
+	/*TODO*/
+	return 1;
+}
+
 
 /*
 	Code to initialize a disk.
