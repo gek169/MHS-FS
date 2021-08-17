@@ -162,6 +162,8 @@ uint_dsk sector_fetch_size(sector* sect){
 	return sector_read_uint_dsk(sect, loc);
 }
 
+
+
 void sector_write_size(sector* sect, uint_dsk val){
 	uint_dsk loc = 0;
 	loc+= 2; /*permission bits.*/
@@ -217,6 +219,17 @@ void sector_write_fname(sector* sect, char* newname){
 	sect->data[SECTOR_SIZE-1] = '\0';
 }
 
+/*
+	Get the size of a file as a number of sectors.
+*/
+
+uint_dsk sector_fetch_size_in_sectors(sector* sect){
+	uint_dsk fakes = sector_fetch_size(sect);
+	fakes += (SECTOR_SIZE - 1); /*the classic trick for integer ceil() to a multiple.*/
+	fakes /= SECTOR_SIZE;
+	return fakes;
+}
+
 
 /*
 	Load a sector from the disk.
@@ -256,22 +269,21 @@ static void get_allocation_bitmap_info(
 	sector s = get_rootnode();
 	*dest_size = sector_fetch_size(&s);
 	*dest_where = sector_fetch_dptr(&s);
-	if(*dest_size == 0){abort();}
-	if(*dest_where == 0){abort();} /*Definitely invalid*/
+	if(*dest_size == 0) {printf("\r\n<ERROR> Allocation bitmap is of zero size!\r\n");			exit(1);}
+	if(*dest_where == 0){printf("\r\n<ERROR> Allocation bitmap pointer is NULL!\r\n");			exit(1);}
 }
 /*
-	Find space for a single node.
+	Find space for a single node. Meant specifically for finding space for fsnodes.
 
 	If the return value is zero, then it didn't find one.
 
 	THIS MUST BE ENTERED UNDER LOCK!!!
 */
-
 static uint_dsk bitmap_find_and_alloc_single_node(
 
 	/*Information attained from a previous call to get_allocation_bitmap_info*/
-	uint_dsk bitmap_size,
-	uint_dsk bitmap_where
+	const uint_dsk bitmap_size,
+	uint_dsk bitmap_where /*HUUUUGE WARNING!!!! WE MODIFY THIS IN THE FUNCTION!!!!*/
 ){
  	uint_dsk i = 1; /*We do **NOT** start at zero.*/
  	sector s = load_sector(bitmap_where);
@@ -294,8 +306,196 @@ static uint_dsk bitmap_find_and_alloc_single_node(
 			return i;
 		} 
 	}
-	return 0;
+	return 0; /*Failed allocation.*/
 }
+
+
+
+/*
+	mark a number of nodes as allocated.
+*/
+static void bitmap_alloc_nodes(
+		/*Information attained from a previous call to get_allocation_bitmap_info*/
+	const uint_dsk bitmap_size,
+	const uint_dsk bitmap_where,
+	/*What node do you want to actually allocate?*/
+	uint_dsk nodeid_in,
+	/*How many nodes do you want to allocate?*/
+	uint_dsk nnodes
+){
+	sector s;
+	uint_dsk nodeid = nodeid_in;
+	uint_dsk bitmap_offset = 0;
+
+	while(nnodes){
+		/*
+			Don't attempt to allocate a sector that doesn't exist!
+		*/
+		if(nodeid > (8 * bitmap_size)) return;
+		if(nnodes == 0) return;
+		/*
+			Generate a block-relative position from nodeid.
+		*/
+		while(
+			nodeid >= (8 * SECTOR_SIZE)
+		){
+			bitmap_offset++;
+			nodeid -= 8 * SECTOR_SIZE;
+		}
+		s = load_sector(bitmap_where + bitmap_offset);
+		/*
+			Optimization- attempt to repeatedly mask elements in the data array.
+			We don't want to repeatedly write the disk.
+		*/
+		node_masker_looptop:
+		{
+			unsigned char p; /*the mask.*/
+			/*calculate the mask for the first nodeid to be marked as used..*/
+			p = nodeid % 8;
+			p = 1 << p;
+			/*nodeid is the id of an actual node (relative to the current sector in the bitmap...) it needs to be divided by 8.
+				p refers to the specific bit in the byte.
+			*/
+			s.data[nodeid/8] |= p;
+			/*
+				Can we possibly mask bits for more nodes?
+				We want to minimize disk writes.
+			*/
+			if(
+				nnodes > 1 && /*This is not the last node to mark.*/
+				(nodeid + 1) < (SECTOR_SIZE*8) /*Its bit resides in the current sector of the bitmap.*/
+			){
+				nodeid++; 
+				nodeid_in++; /*Remember to increment this too!*/
+				nnodes--;
+				goto node_masker_looptop;
+			}
+		}
+		store_sector(bitmap_where + bitmap_offset, &s);
+		nnodes--; nodeid_in++;
+		nodeid = nodeid_in;
+	}
+	return;	
+}
+
+/*
+	mark a number of nodes as de-allocated.
+*/
+static void bitmap_dealloc_nodes(
+		/*Information attained from a previous call to get_allocation_bitmap_info*/
+	const uint_dsk bitmap_size,
+	const uint_dsk bitmap_where,
+
+	/*What node do you want to actually deallocate?*/
+	uint_dsk nodeid_in,
+	/*How many nodes do you want to deallocate?*/
+	uint_dsk nnodes 
+){
+	sector s;
+	uint_dsk nodeid = nodeid_in;
+	uint_dsk bitmap_offset = 0;
+	
+	/*
+		Don't attempt to de-allocate a sector that doesn't exist!
+	*/
+	while(nnodes){
+		if(nodeid > (8 * bitmap_size)) return;
+		if(nnodes == 0) return;
+		/*
+			Generate a block-relative position from nodeid.
+		*/
+		while(
+			nodeid >= (8 * SECTOR_SIZE)
+		){
+			bitmap_offset++;
+			nodeid -= 8 * SECTOR_SIZE;
+		}
+		s = load_sector(bitmap_where + bitmap_offset);
+		/*
+			Optimization- attempt to repeatedly mask elements in the data array.
+			We don't want to repeatedly write the disk.
+		*/
+		node_masker_looptop:
+		{
+			unsigned char p; /*the mask.*/
+			/*calculate the mask for the first nodeid to be eliminated.*/
+			p = nodeid % 8;
+			p = 1 << p;
+			p = ~p;
+			/*nodeid is the id of an actual node (relative to the current sector in the bitmap...) it needs to be divided by 8.
+				p refers to the specific bit in the byte.
+			*/
+			s.data[nodeid/8] &= p;
+			/*
+				Can we possibly mask bits for more nodes?
+				We want to minimize disk writes.
+			*/
+			if(
+				nnodes > 1 && /*This is not the last node to mark.*/
+				(nodeid + 1) < (SECTOR_SIZE*8) /*Its bit resides in the current sector of the bitmap.*/
+			){
+				nodeid++; 
+				nodeid_in++;
+				nnodes--;
+				goto node_masker_looptop;
+			}
+		}
+		store_sector(bitmap_where + bitmap_offset, &s);
+		nnodes--; nodeid_in++;
+		nodeid = nodeid_in;
+	}
+	return;	
+}
+
+static uint_dsk bitmap_find_and_alloc_multiple_nodes(
+	/*Information attained from a previous call to get_allocation_bitmap_info*/
+	const uint_dsk bitmap_size,
+	const uint_dsk bitmap_where,
+	/*How many are actually needed?*/
+	uint_dsk needed
+){
+ 	uint_dsk i = bitmap_where + (bitmap_size / SECTOR_SIZE); /*We do **NOT** start at zero.*/
+ 	uint_dsk run = 0;
+ 	uint_dsk bitmap_offset = i / (8 * SECTOR_SIZE); /*What */
+ 	sector s;
+ 	if(needed == 0) return 0;
+ 	if(needed == 1) return bitmap_find_and_alloc_single_node(bitmap_size, bitmap_where);
+ 	s = load_sector(bitmap_where + bitmap_offset);
+	for(;i < (bitmap_size * 8);i++){
+		unsigned char p; /*before masking.*/
+		unsigned char q; /*after masking*/
+		/*
+			Did we just cross into the next sector?
+			If so, load the next sector!
+		*/
+		if((i/8) % SECTOR_SIZE == 0){
+			bitmap_offset++;
+			s = load_sector(bitmap_offset + bitmap_where);
+		}
+		p = s.data[ (i%SECTOR_SIZE)/8];
+		q = p & (1<< ((i%SECTOR_SIZE)%8));
+		if(q == 0) { /*Free slot! Increment run.*/
+			run++;
+			if(run >= needed) {
+				uint_dsk start = i - (run-1);
+				/*
+					TODO: Inefficiency, the disk is over-read, and we really should
+					allocate nodes from the end backwards, to stay (potentially, on a real hdd) on the same track.
+				*/
+				bitmap_alloc_nodes(
+					bitmap_size,
+					bitmap_where, 
+					start,
+					run
+				);
+				return start;
+			}
+		} else run = 0; /*We reached an allocated bit.*/
+	}
+	return 0; /*Failed allocation.*/
+}
+
+
 
 
 
@@ -384,7 +584,7 @@ static void lock_modify_bit(){
 	sector a,b;
 	a = load_sector(0);
 	b = get_datasect(&a);
-	b.data[0] |= 1;
+	b.data[0] |= 1; /*This is the bit usually used for the root node if we think ordinarily*/
 	store_sector(sector_fetch_dptr(&a), &b);
 }
 
