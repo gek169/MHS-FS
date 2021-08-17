@@ -245,6 +245,61 @@ static void store_sector(uint_dsk where, sector* s){
 */
 static sector get_rootnode(){ return load_sector(0); }
 /*
+	Get the allocation bitmap's information.
+	The place on disk where the first block is stored,
+	as well as the size of the bitmap in blocks.
+*/
+static void get_allocation_bitmap_info(
+	uint_dsk* dest_size,
+	uint_dsk* dest_where
+){
+	sector s = get_rootnode();
+	*dest_size = sector_fetch_size(&s);
+	*dest_where = sector_fetch_dptr(&s);
+	if(*dest_size == 0){abort();}
+	if(*dest_where == 0){abort();} /*Definitely invalid*/
+}
+/*
+	Find space for a single node.
+
+	If the return value is zero, then it didn't find one.
+
+	THIS MUST BE ENTERED UNDER LOCK!!!
+*/
+
+static uint_dsk bitmap_find_and_alloc_single_node(
+
+	/*Information attained from a previous call to get_allocation_bitmap_info*/
+	uint_dsk bitmap_size,
+	uint_dsk bitmap_where
+){
+ 	uint_dsk i = 1; /*We do **NOT** start at zero.*/
+ 	sector s = load_sector(bitmap_where);
+	for(;i < (bitmap_size * 8);i++){
+		unsigned char p; /*before masking.*/
+		unsigned char q; /*after masking*/
+		/*
+			Did we just cross into the next sector?
+			If so, load the next sector!
+		*/
+		if((i/8) % SECTOR_SIZE == 0){
+			bitmap_where++;
+			s = load_sector(bitmap_where);
+		}
+		p = s.data[ (i%SECTOR_SIZE)/8];
+		q = p & (1<< ((i%SECTOR_SIZE)%8));
+		if(q == 0) { /*Free slot! Mark it as used.*/
+			p = p | (1<< ((i%SECTOR_SIZE)%8));
+			store_sector(bitmap_where, &s);
+			return i;
+		} 
+	}
+	return 0;
+}
+
+
+
+/*
 	Given a sector, fetch the sector its data pointer is pointing to.
 */
 static sector get_datasect(sector* sect){
@@ -254,7 +309,16 @@ static sector get_datasect(sector* sect){
 	bruh = load_sector(datapointer);
 	return bruh;
 }
-
+/*
+	Now, the right pointer.
+*/
+static sector get_rightsect(sector* sect){
+	sector bruh = {0};
+	uint_dsk datapointer = sector_fetch_rptr(sect);
+	if(datapointer == 0) return bruh;
+	bruh = load_sector(datapointer);
+	return bruh;
+}
 
 /*
 	Attain lock for modifying the hard disk.
@@ -331,15 +395,96 @@ static void unlock_modify_bit(){
 	b.data[0] &= ~1;
 	store_sector(sector_fetch_dptr(&a), &b);
 }
+
 /*
-	Now, the right pointer.
+	Return a pointer to the node in the current directory with target_name name.
 */
-static sector get_rightsect(sector* sect){
-	sector bruh = {0};
-	uint_dsk datapointer = sector_fetch_rptr(sect);
-	if(datapointer == 0) return bruh;
-	bruh = load_sector(datapointer);
-	return bruh;
+static uint_dsk walk_nodes_right(
+	uint_dsk start_node_id, 
+	char* target_name
+){
+	sector s;
+	while(1){
+		s = load_sector(start_node_id);
+		if(start_node_id == 0){ /*We are searching root. Don't match the root node.*/
+			start_node_id = sector_fetch_rptr(&s);
+			continue;
+		}
+		if(strcmp(sector_fetch_fname(&s), target_name) == 0)
+			return start_node_id;
+		start_node_id = sector_fetch_rptr(&s);
+		if(start_node_id == 0) return 0; /*reached the end of the directory. Bust! Couldn't find it.*/
+	}
+}
+
+/*
+	Does a node exist in the directory?
+*/
+static char node_exists_in_directory(uint_dsk directory_node_ptr, char* target_name){
+	sector s;
+	uint_dsk dptr;
+	s = load_sector(directory_node_ptr);
+	dptr = sector_fetch_dptr(&s);
+	if(dptr == 0) return 0; /*Zero entries in the directory.*/
+	if(walk_nodes_right(dptr, target_name)) return 1;
+	return 0;
+}
+/*
+	Append node to directory.
+	MUST BE LOCKED ON ENTRY.
+	ALLOCATION BITMAP NOT UPDATED (LOW LEVEL ROUTINE).
+*/
+static void append_node_to_dir(uint_dsk directory_node_ptr, uint_dsk new_node){
+	sector s, s2;
+	s = load_sector(directory_node_ptr);
+	s2 = load_sector(new_node);
+	/*
+		The old dptr of the directory is the rptr of the new node.
+	*/
+	sector_write_rptr(
+		&s2, 
+		sector_fetch_dptr(&s)
+	);
+	/*
+		The directory needs a new dptr which points to the new node.
+	*/
+	sector_write_dptr(
+		&s, 
+		new_node
+	);
+	store_sector(new_node, &s2); /*A crash here will cause an extra file node to exist on the disk which is pointed to by nothing.*/
+	store_sector(directory_node_ptr, &s); /*A crash here will do nothing*/
+}
+/*
+	Delete the righthand node.
+	MUST BE LOCKED ON ENTRY.
+	ALLOCATION BITMAP NOT UPDATED (LOW LEVEL ROUTINE).
+*/
+
+static char node_delete_right(uint_dsk sibling){
+	sector s, sdeleteme;
+	uint_dsk deletemeid;
+	s = load_sector(sibling);
+	deletemeid = sector_fetch_rptr(&s);
+	if(deletemeid == 0) return 0; /*Don't bother!*/
+	sdeleteme = load_sector(sector_fetch_rptr(&s));
+	/*
+		Check if sdeleteme is a directory, with contents.
+
+		A directory with contents cannot be deleted. You must delete all the files in it first.
+	*/
+	if(
+			sector_is_directory(&sdeleteme) 
+		&&	sector_fetch_dptr(&sdeleteme)
+	){
+		return 0; /*Failure! Cannot delete node- it is a directory with contents.*/
+	}
+	sector_write_rptr(
+		&s, 
+		sector_fetch_rptr(&sdeleteme)
+	);
+	store_sector(sibling, &s);
+	return 1;
 }
 
 /*
@@ -349,7 +494,7 @@ static sector get_rightsect(sector* sect){
 static void disk_init(){
 	/*BITMAP_LOCATION*/
 	uint_dsk allocation_bitmap_size = BITMAP_START;
-	allocation_bitmap_size = (DISK_SIZE  - SECTOR_OFFSET)/8;
+	allocation_bitmap_size = (DISK_SIZE  - SECTOR_OFFSET)/8; /*NUMBER OF BYTES. Not number of sectors.*/
 	{
 		sector bruh = {0};
 		sector_write_perm_bits(&bruh, OWNER_R | PUBLIC_R);
@@ -393,8 +538,8 @@ static void disk_init(){
 			}
 		}
 		i--;
-		if((i % SECTOR_SIZE) != (SECTOR_SIZE - 1)){ /*The sector wasn't stored properly.*/
-			store_sector(j, &bruh); ++j;
+		if((i % SECTOR_SIZE) != (SECTOR_SIZE - 1)){ /*The sector wasn't stored! Store the rest of it.*/
+			store_sector(j, &bruh); 	  j++;
 			memset(bruh.data, 0, SECTOR_SIZE);
 		}
 	}
