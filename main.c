@@ -478,7 +478,7 @@ static void bitmap_dealloc_nodes(
 			Optimization- attempt to repeatedly mask elements in the data array.
 			We don't want to repeatedly write the disk.
 		*/
-		node_masker_looptop:
+		node_masker_looptop:;
 		{
 			unsigned char p; /*the mask.*/
 			/*calculate the mask for the first nodeid to be eliminated.*/
@@ -1166,25 +1166,22 @@ static char file_get_dir_entry_by_index(
 	if(strlen(path) > 65535) {printf("file_get_dir_entry_by_index: path too long.\r\n");return 0;} /*Path is too long.*/
 	my_strcpy(pathbuf, path);
 	pathsan(pathbuf);
-	printf("DEBUG: file_get_dir_entry_by_index: About to check if root. directory: %s\r\n", path);
 	if(strcmp("/", pathbuf) == 0){
 		s_worker2 = load_sector(0);
 		res = sector_fetch_rptr(&s_worker2);
-		printf("W: file_get_dir_entry_by_index: path resolves to root.\r\n");
 	} else {
 		res = resolve_path(pathbuf);
-		if (res == 0) {printf("file_get_dir_entry_by_index: Cannot resolve path..\r\n");return 0;}
+		if (res == 0) {return 0;}
 		s_worker2 = load_sector(res);
-		if(!sector_is_directory(&s_worker2)) {printf("file_get_dir_entry_by_index: path resolves to file, not directory.\r\n");return 0;} /*Trying to list a file like a directory???*/
+		if(!sector_is_directory(&s_worker2)) {return 0;} /*Trying to list a file like a directory???*/
 		res = sector_fetch_dptr(&s_worker2);
 	}
-	printf("DEBUG: file_get_dir_entry_by_index: about to loop directory %s\r\n", path);
 	for(i = 0; i < n; i++){
-		if(res == 0) {printf("file_get_dir_entry_by_index: reached end of directory.\r\n");return 0;}
+		if(res == 0) {return 0;}
 		s_worker2 = load_sector(res);
 		res = sector_fetch_rptr(&s_worker2);
 	}
-	if(res == 0) {printf("file_get_dir_entry_by_index: reached end of directory after loop.\r\n");return 0;}
+	if(res == 0) {return 0;}
 	s_worker2 = load_sector(res);
 	my_strcpy(buf, sector_fetch_fname(&s_worker2));
 	return 1;
@@ -1392,6 +1389,9 @@ static char file_delete(
 
 
 
+
+
+
 /*
 	Code to initialize a disk.
 
@@ -1422,6 +1422,7 @@ static void disk_init(){
 
 
 char ubuf[65535];
+char ubuf2[65535];
 
 static sector usect;
 
@@ -1447,6 +1448,7 @@ int main(int argc, char** argv){
 		printf("  st pathi name patho   : Store an external file into the VHD, into a file named name.\r\n");
 		printf("  gt patho pathi        : Dump a file from the VHD to a file\r\n");
 		printf("  mkdir pathi name      : Create a directory at pathi with name name.\r\n");
+		printf("  rm dir name           : Delete file or directory name in dir.\r\n");
 		return 0;
 	}
 
@@ -1460,11 +1462,34 @@ int main(int argc, char** argv){
 				i,
 				ubuf
 			);
-			if(a) { printf(" ENTRY %lu: %s\r\n", (unsigned long)i, ubuf);}
+			if(a) { 
+			
+				printf(" ENTRY %lu: %s ", (unsigned long)i, ubuf);
+				ubuf2[0] = '\0';
+				strcat(ubuf2, argv[2]);
+				strcat(ubuf2, "/");
+				strcat(ubuf2, ubuf);
+				
+				file_read_node(ubuf2, &usect);
+				if(
+					sector_fetch_perm_bits(&usect) & IS_DIRECTORY
+				)
+					printf("DIR\r\n");
+				else{
+					printf("FILE: %lu\r\n", (unsigned long) sector_fetch_size(&usect));
+				}
+
+			}
 			else return 0;
 
 			i++;
 		}
+		return 0;
+	}else if(strcmp(argv[1], "rm") == 0){
+		file_delete(
+			argv[2],
+			argv[3]
+		);
 		return 0;
 	} else if(strcmp(argv[1], "st") == 0){
 		uint_dsk i, len;
@@ -1513,15 +1538,25 @@ int main(int argc, char** argv){
 	} else if(strcmp(argv[1], "gt") == 0) {
 		FILE* q;
 		char a;
-		uint_dsk i = 0;
+		uint_dsk len;
+		uint_dsk j = 0;
 		my_strcpy(ubuf, argv[3]);
 		q = fopen(argv[2], "wb");
-		for(;;){
-			a = file_read_sector(ubuf, (i * SECTOR_SIZE), &usect);i++;
-			if(a == 0){
+		a = file_read_node(ubuf, &usect);
+		if(a == 0) return 1;
+		len = sector_fetch_size(&usect);
+		if(len == 0) return 1;
+		j =sector_fetch_dptr(&usect); 
+		if(j == 0) return 1;
+		if(sector_fetch_perm_bits(&usect) & IS_DIRECTORY ) return 1;
+		for(;len > 0; len -= SECTOR_SIZE){
+			usect = load_sector(j++);
+			if(len > SECTOR_SIZE){
+				fwrite(usect.data, SECTOR_SIZE, 1, q); fflush(q);
+			}else{
+				fwrite(usect.data, len, 1, q); fflush(q);
 				return 0;
 			}
-			fwrite(usect.data, SECTOR_SIZE, 1, q); fflush(q);
 		}
 		return 0;
 	} else {
