@@ -1085,6 +1085,32 @@ static char file_read_sector(
 }
 
 /*
+	Read a file's fsnode.
+	API call.
+*/
+
+static char file_read_node(
+	const char* path,
+	sector* dest
+){
+	uint_dsk res;
+
+	if(strlen(path) == 0) {printf("file_read_node: path empty.\r\n");return 0;} /*Cannot create a directory with no name!*/
+	if(strlen(path) > 65535) {printf("file_read_node: path too long.\r\n");return 0;} /*Path is too long.*/
+	my_strcpy(pathbuf, path);
+	pathsan(pathbuf);
+	if(strcmp(pathbuf, "/") != 0)
+	{
+		res = resolve_path(pathbuf);
+		if(res == 0) {printf("file_read_node: path fails to resolve.\r\n");return 0;}
+	} else {
+		res = 0;
+	}
+	*dest = load_sector(res);
+	return 1;
+}
+
+/*
 	Write sector of file.
 
 	(API call)
