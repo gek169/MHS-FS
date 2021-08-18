@@ -233,6 +233,10 @@ void pathsan(char* path){
 		    a++; b++;
 		}
 	}
+	while(
+			strlen(path) 
+		&& 	path[strlen(path)-1] == '/'
+	) path[strlen(path)-1] = '\0';
 }
 
 
@@ -679,54 +683,6 @@ static uint_dsk walk_nodes_right(
 }
 
 /*
-	Follow an absolute path starting at the root.
-	The path may never resolve to the root directory node, as it does not exist.
-	The path may *only* resolve to a file.
-*/
-static uint_dsk resolve_path(
-	char* path
-){
-	char* fname;
-	while(*path == '/') path++; /*Skip preceding slashes.*/
-	if(strlen(path) == 0) return 0; /*Cannot create a directory with no name!*/
-	while(
-			strlen(path) 
-		&& 	path[strlen(path)-1] == '/'
-	) path[strlen(path)-1] = '\0';
-	if(strlen(path) == 0) return 0; /*Repeat the check. I dont think it's possible for this to ever trigger... but it's here.*/
-	pathsan(path);
-	if(strlen(path) == 0) return 0; /*Repeat the check.*/
-	fname = path;
-	while(strfind(fname, "/") != -1) fname += strfind(fname, "/"); /*Skip all slashes.*/
-	if(strlen(fname) == 0) return 0; /*Cannot create a directory with no name!*/
-	namesan(fname); /*Sanitize the name.*/
-	/*Walk the tree. We use the path to do this.*/
-	{
-		uint_dsk current_node_searching = 0;
-		uint_dsk candidate_node = 0;
-		while(1){
-			long slashloc = strfind(path, "/");
-			if(slashloc == 0){
-				printf("<INTERNAL ERROR> Failed to sanitize path?");
-				exit(1);
-			}
-			if(slashloc != -1) path[slashloc] = '\0';
-			/*From this node, identify nodes to the right.*/
-			candidate_node = walk_nodes_right(current_node_searching, path);
-			if(slashloc != -1) {
-				path[slashloc] = '/';
-				path += slashloc + 1; /*Must skip the slash too.*/
-				if(candidate_node == 0)	return 0;
-				else current_node_searching = candidate_node;
-			} else {
-				/*Whatever we got, it's it!*/
-				return candidate_node;
-			}
-		}
-	}
-}
-
-/*
 	Does a node exist in the directory?
 */
 static char node_exists_in_directory(uint_dsk directory_node_ptr, char* target_name){
@@ -758,6 +714,52 @@ static uint_dsk get_node_in_directory(uint_dsk directory_node_ptr, char* target_
 	if(r) return r;
 	return 0;
 }
+
+
+/*
+	Follow an absolute path starting at the root.
+	The path may never resolve to the root directory node, as it does not exist.
+	The path may *only* resolve to a file.
+*/
+static uint_dsk resolve_path(
+	char* path
+){
+	char* fname;
+	while(*path == '/') path++; /*Skip preceding slashes.*/
+	if(strlen(path) == 0) return 0; /*Cannot create a directory with no name!*/
+	pathsan(path);
+	if(strlen(path) == 0) return 0; /*Repeat the check.*/
+	fname = path;
+	while(strfind(fname, "/") != -1) fname += strfind(fname, "/"); /*Skip all slashes.*/
+	if(strlen(fname) == 0) return 0; /*Cannot create a directory with no name!*/
+	namesan(fname); /*Sanitize the name.*/
+	/*Walk the tree. We use the path to do this.*/
+	{
+		uint_dsk current_node_searching = 0;
+		uint_dsk candidate_node = 0;
+		while(1){
+			long slashloc = strfind(path, "/");
+			if(slashloc == 0){
+				printf("<INTERNAL ERROR> Failed to sanitize path?");
+				exit(1);
+			}
+			if(slashloc != -1) path[slashloc] = '\0';
+			/*From this node, identify nodes to the right.*/
+			candidate_node = get_node_in_directory(current_node_searching, path);
+			if(slashloc != -1) {
+				path[slashloc] = '/';
+				path += slashloc + 1; /*Must skip the slash too.*/
+				if(candidate_node == 0)	return 0;
+				else current_node_searching = candidate_node;
+			} else {
+				/*Whatever we got, it's it!*/
+				return candidate_node;
+			}
+		}
+	}
+}
+
+
 
 static void append_node_right(uint_dsk sibling, uint_dsk newbie){
 	s_allocator = load_sector(sibling);
@@ -901,7 +903,7 @@ static char node_remove_from_dir(
 					Reach to our right- i_prev is in s_allocator.
 					We store our rptr into the previous guy's rptr.
 				*/
-				s_walker = load_sector(i); /*We don't need */
+				s_walker = load_sector(i); /*We don't need s_walker anymore.*/
 				sector_write_rptr(&s_allocator, sector_fetch_rptr(&s_walker));
 				store_sector(i_prev, &s_allocator);
 			}
@@ -926,7 +928,7 @@ static char pathbuf[0x10000];
 static char namebuf[SECTOR_SIZE - (4 * sizeof(uint_dsk) + 2)];
 static sector s_worker;
 
-static char createEmpty(
+static char file_createempty(
 	const char* path, /*the directory you want to create it in. If you want to create it in root, it MUST be / or a multiple of slashes.*/
 	const char* fname,
 	ushort permbits /*the permission bits, including whether or not it is a directory*/
@@ -1104,7 +1106,6 @@ static sector s_deleter;
 /*
 	Delete a file.
 	API Call.
-	
 */
 static char file_delete(
 	const char* path_to_directory,
@@ -1171,7 +1172,6 @@ static char file_delete(
 		1
 	);
 	unlock_modify_bit();
-
 	return 1;
 }
 
