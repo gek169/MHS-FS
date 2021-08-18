@@ -1365,6 +1365,7 @@ static char file_delete(
 		strcat(pathbuf, namebuf);
 		char a = file_realloc(pathbuf, 0);
 		if(a == 0) {printf("<ERROR> file_delete failed while deleting file contents!\r\n");  return 0;} /*Failure! Couldn't reallocate.*/
+		s_deleter2 = load_sector(node);
 	}
 	/*If it has contents now, it cannot be freed.*/
 	if( sector_fetch_dptr(&s_deleter2) ) {printf("<ERROR> file_delete: file still has contents.\r\n");return 0;}
