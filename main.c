@@ -661,6 +661,15 @@ static void lock_modify_bit(){
 	b_lock.data[0] |= 1; /*This is the bit usually used for the root node if we think ordinarily*/
 	store_sector(sector_fetch_dptr(&a_lock), &b_lock);
 }
+
+/*
+	Check the modify bit- was the hard disk being modified?
+*/
+static char check_modify_bit(){
+	a_lock = load_sector(0);
+	b_lock = get_datasect(&a_lock);
+	return b_lock.data[0] & 1;
+}
 static void unlock_modify_bit(){
 	a_lock = load_sector(0);
 	b_lock = get_datasect(&a_lock);
