@@ -931,6 +931,7 @@ static sector s_worker;
 static char file_createempty(
 	const char* path, /*the directory you want to create it in. If you want to create it in root, it MUST be / or a multiple of slashes.*/
 	const char* fname,
+	uint_dsk owner,
 	ushort permbits /*the permission bits, including whether or not it is a directory*/
 ){
 	uint_dsk directorynode = 0;
@@ -971,6 +972,7 @@ static char file_createempty(
 		sector_write_dptr(&s_worker, 0);
 		sector_write_size(&s_worker, 0);
 		sector_write_perm_bits(&s_worker, permbits);
+		sector_write_ownerid(&s_worker, owner);
 		store_sector(alloced_node, &s_worker);
 		/*Step 3: append node to directory! (TODO: REDUNDANT READ AND WRITE HERE...)*/
 		append_node_to_dir(directorynode, alloced_node); /*This actually has a special case for the root node.*/
@@ -983,6 +985,106 @@ static char file_createempty(
 		unlock_modify_bit();
 		return 0;
 }
+
+/*
+	Read sector from file.
+*/
+
+static char file_read_sector(
+	const char* path,
+	uint_dsk offset, /*How far into the file? In bytes.*/
+	sector* dest
+){
+	uint_dsk res;
+
+	if(strlen(path) == 0) return 0; /*Cannot create a directory with no name!*/
+	if(strlen(path) > 65535) return 0; /*Path is too long.*/
+	my_strcpy(pathbuf, path);
+
+	res = resolve_path(pathbuf);
+	if(res == 0) return 0;
+
+	s_walker = load_sector(res);
+
+	if(sector_is_directory(&s_walker)) return 0; /*Cannot read from a directory. TODO: provide a textual listing of the directory?*/
+
+	if(sector_fetch_dptr(&s_walker) == 0) return 0;
+	if(sector_fetch_size(&s_walker) <= offset) return 0; /*Failed to read.*/
+	
+	*dest = load_sector(offset + sector_fetch_dptr(&s_walker));
+	return 1;
+}
+
+/*
+	Write sector of file.
+
+	API call.
+*/
+
+static char file_write_sector(
+	const char* path,
+	uint_dsk offset, /*How far into the file? In bytes.*/
+	sector* newcontents
+){
+	uint_dsk res;
+
+	if(strlen(path) == 0) return 0; /*Cannot create a directory with no name!*/
+	if(strlen(path) > 65535) return 0; /*Path is too long.*/
+	my_strcpy(pathbuf, path);
+
+	res = resolve_path(pathbuf);
+	if(res == 0) return 0;
+
+	s_walker = load_sector(res);
+
+	if(sector_is_directory(&s_walker)) return 0; /*Cannot read from a directory. TODO: provide a textual listing of the directory?*/
+
+	if(sector_fetch_dptr(&s_walker) == 0) return 0;
+	if(sector_fetch_size(&s_walker) <= offset) return 0; /*Too big!*/
+	
+	store_sector(offset + sector_fetch_dptr(&s_walker), newcontents); /*Perform storage.*/
+	return 1;
+}
+
+
+/*
+	Get the Nth directory entry in a directory.
+*/
+
+static char file_get_dir_entry_by_index(
+	const char* path,
+	uint_dsk n,
+	char* buf
+){
+	uint_dsk res;
+	uint_dsk i;
+	if(strlen(path) == 0) return 0; /*Cannot create a directory with no name!*/
+	if(strlen(path) > 65535) return 0; /*Path is too long.*/
+	my_strcpy(pathbuf, path);
+	pathsan(pathbuf);
+	if(strcmp("/", pathbuf) == 0){
+		s_allocator = load_sector(0);
+		res = sector_fetch_rptr(&s_allocator);
+	} else {
+		res = resolve_path(pathbuf);
+		if (res == 0) return 0;
+		s_allocator = load_sector(res);
+		res = sector_fetch_dptr(&s_allocator);
+	}
+	
+	for(i = 0; i < n; i++){
+		if(res == 0) {
+			return 0;
+		}
+		s_allocator = load_sector(res);
+		res = sector_fetch_rptr(&s_allocator);
+	}
+	if(res == 0) {return 0;}
+	s_allocator = load_sector(res);
+	my_strcpy(buf, sector_fetch_fname(&s_allocator));
+	return 1;
+}
+
 /*
 	Re-Allocate space for a file.
 
@@ -1004,7 +1106,7 @@ static char file_realloc(
 	if(strlen(path) == 0) return 0; /*Cannot create a directory with no name!*/
 	if(strlen(path) > 65535) return 0; /*Path is too long.*/
 	my_strcpy(pathbuf, path);
-	fsnode = resolve_path(pathbuf);
+	fsnode = resolve_path(pathbuf); /*pathbuf is ruined after this.*/
 	if(fsnode == 0) return 0; /*FAILURE! Does not exist.*/
 	s_worker = load_sector(fsnode);
 	if(sector_is_directory(&s_worker)) return 0; /*FAILURE! it's a directory, not a file!*/
@@ -1034,7 +1136,7 @@ static char file_realloc(
 			unlock_modify_bit();
 			return 1;
 		} else { /*Newsize is zero, but no dptr?*/
-			sector_write_size(&s_worker, 0);
+			sector_write_size(&s_worker, 0); /*It probably was this size?*/
 			store_sector(fsnode, &s_worker);
 		}
 	}
@@ -1070,6 +1172,7 @@ static char file_realloc(
 	);
 	if(new_location == 0) goto fail;
 	/*Step 2: Copy over the data to the new location.*/
+	if(need_to_copy)
 	{uint_dsk i = 0;
 		for(; i < ( (size_to_copy + SECTOR_SIZE - 1) / SECTOR_SIZE );){
 			s_walker = load_sector(sector_fetch_dptr(&s_worker) + i);
@@ -1207,6 +1310,8 @@ static void disk_init(){
 
 
 int main(int argc, char** argv){
+	(void)argc;
+	(void)argv;
 	f = fopen("disk.dsk", "rb+");
 	if(!f){
 		unsigned long i;
