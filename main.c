@@ -1110,11 +1110,12 @@ static char file_write_sector(
 	if(sector_fetch_dptr(&s_worker2) == 0) {printf("file_write_sector: file has NULL dptr.\r\n");return 0;}
 	if(sector_fetch_size(&s_worker2) <= offset) {printf("file_write_sector: file is too small.\r\n");return 0;} /*Too big!*/
 
+/*
 	printf(
 		"DEBUG: offset calculation is %lu, was %lu\r\n", 
 		(unsigned long)(offset / SECTOR_SIZE), 
 		(unsigned long)offset
-	);
+	);*/
 	store_sector(
 		(offset / SECTOR_SIZE) + sector_fetch_dptr(&s_worker2), newcontents
 	); /*Perform storage.*/
