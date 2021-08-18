@@ -976,7 +976,7 @@ static char file_createempty(
 		store_sector(alloced_node, &s_worker);
 		/*Step 3: append node to directory! (TODO: REDUNDANT READ AND WRITE HERE...)*/
 		append_node_to_dir(directorynode, alloced_node); /*This actually has a special case for the root node.*/
-	
+	/*Step 4: unlock*/
 	unlock_modify_bit();
 	
 	return 1;
@@ -987,7 +987,9 @@ static char file_createempty(
 }
 
 /*
-	Read sector from file.
+	Read sector from file
+
+	(API CALL)
 */
 
 static char file_read_sector(
@@ -1006,8 +1008,7 @@ static char file_read_sector(
 
 	s_walker = load_sector(res);
 
-	if(sector_is_directory(&s_walker)) return 0; /*Cannot read from a directory. TODO: provide a textual listing of the directory?*/
-
+	if(sector_is_directory(&s_walker)) return 0; /*Cannot read from a directory.*/
 	if(sector_fetch_dptr(&s_walker) == 0) return 0;
 	if(sector_fetch_size(&s_walker) <= offset) return 0; /*Failed to read.*/
 	
@@ -1018,7 +1019,7 @@ static char file_read_sector(
 /*
 	Write sector of file.
 
-	API call.
+	(API call)
 */
 
 static char file_write_sector(
@@ -1037,7 +1038,7 @@ static char file_write_sector(
 
 	s_walker = load_sector(res);
 
-	if(sector_is_directory(&s_walker)) return 0; /*Cannot read from a directory. TODO: provide a textual listing of the directory?*/
+	if(sector_is_directory(&s_walker)) return 0; /*Cannot read from a directory.*/
 
 	if(sector_fetch_dptr(&s_walker) == 0) return 0;
 	if(sector_fetch_size(&s_walker) <= offset) return 0; /*Too big!*/
@@ -1049,6 +1050,8 @@ static char file_write_sector(
 
 /*
 	Get the Nth directory entry in a directory.
+
+	(API CALL)
 */
 
 static char file_get_dir_entry_by_index(
@@ -1059,7 +1062,7 @@ static char file_get_dir_entry_by_index(
 	uint_dsk res;
 	uint_dsk i;
 	if(strlen(path) == 0) return 0; /*Cannot create a directory with no name!*/
-	if(strlen(path) > 65535) return 0; /*Path is too long.*/
+	if(strlen(path) > 65534) return 0; /*Path is too long.*/
 	my_strcpy(pathbuf, path);
 	pathsan(pathbuf);
 	if(strcmp("/", pathbuf) == 0){
@@ -1069,13 +1072,12 @@ static char file_get_dir_entry_by_index(
 		res = resolve_path(pathbuf);
 		if (res == 0) return 0;
 		s_allocator = load_sector(res);
+		if(!sector_is_directory(&s_allocator)) return 0; /*Trying to list a file like a directory???*/
 		res = sector_fetch_dptr(&s_allocator);
 	}
 	
 	for(i = 0; i < n; i++){
-		if(res == 0) {
-			return 0;
-		}
+		if(res == 0) {return 0;}
 		s_allocator = load_sector(res);
 		res = sector_fetch_rptr(&s_allocator);
 	}
@@ -1257,7 +1259,7 @@ static char file_delete(
 	node_parentdirectory, 
 	namebuf);
 	s_worker = load_sector(node);
-	/*If it has contents now, it cannot be saved.*/
+	/*If it has contents now, it cannot be freed.*/
 	if( sector_fetch_dptr(&s_worker) )return 0;
 
 	/**/
@@ -1309,6 +1311,10 @@ static void disk_init(){
 }
 
 
+char ubuf[65535];
+
+static sector usect;
+
 int main(int argc, char** argv){
 	(void)argc;
 	(void)argv;
@@ -1322,8 +1328,84 @@ int main(int argc, char** argv){
 		fclose(f);
 		f = fopen("disk.dsk", "rb+");
 		disk_init();
-	} 
-	/*
-		A valid filesystem has been loaded. TODO: attempt to parse a command.
-	*/
+	}
+
+	if(argc < 2){
+		printf("USAGE: %s command\r\n", argv[0]);
+		printf("command can be any of the following:\r\n");
+		printf("  ls pathi              : list the files in the directory at path.\r\n");
+		printf("  st pathi name patho   : Store an external file into the VHD, into a file named name.\r\n");
+		printf("  gt patho pathi        : Dump a file from the VHD to a file\r\n");
+		printf("  mkdir pathi name      : Create a directory at pathi with name name.\r\n");
+		return 0;
+	}
+
+	if(strcmp(argv[1], "ls") == 0){
+		char a;
+		uint_dsk i = 0;
+		printf("<DIRECTORY LISTING>\r\n");
+		for(;;){
+			a = file_get_dir_entry_by_index(
+				argv[2],
+				i,
+				ubuf
+			);
+			if(a) { printf(" ENTRY %lu: %s", (unsigned long)i, ubuf);}
+			else return 0;
+		}
+		return 0;
+	} else if(strcmp(argv[1], "st") == 0){
+		uint_dsk i, len;
+		FILE* q;
+		/*
+			Attempt to create it- if it already exists, then it won't do anything.
+		*/
+		file_createempty(
+			argv[2],
+			argv[3],
+			0,
+			OWNER_R | OWNER_W | OWNER_X
+		);
+		my_strcpy(ubuf, argv[2]);
+		strcat(ubuf, "/");
+		strcat(ubuf, argv[3]);
+
+		q = fopen(argv[4], "rb"); if(!q) return 1;
+
+		fseek(q, SEEK_END, 0);
+		len = ftell(q);
+		fseek(q, SEEK_SET, 0);
+		file_realloc(
+			ubuf,
+			len
+		);
+		for(i = 0; i < (len + SECTOR_SIZE - 1) / SECTOR_SIZE; i++){
+			fread(usect.data, 1, SECTOR_SIZE, q);
+			file_write_sector(ubuf, i, &usect);
+		}
+	} else if(strcmp(argv[1], "mkdir") == 0){
+		file_createempty(
+			argv[2],
+			argv[3],
+			0,
+			OWNER_R | OWNER_W | OWNER_X | IS_DIRECTORY
+		);
+	} else if(strcmp(argv[1], "gt") == 0) {
+		FILE* q;
+		char a;
+		uint_dsk i = 0;
+		my_strcpy(ubuf, argv[2]);
+		q = fopen(argv[3], "wb");
+		for(;;){
+			a = file_read_sector(ubuf, i++, &usect);
+			if(a == 0){
+				return 0;
+			}
+			fwrite(usect.data, SECTOR_SIZE, 1, q);
+		}
+	} else {
+		printf("\r\nBad Command\r\n");
+		return 1;
+	}
+	return 1;
 }
