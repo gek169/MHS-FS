@@ -295,6 +295,7 @@ static void store_sector(uint_dsk where, sector* s){
 	}
 	fseek(f, where * SECTOR_SIZE, SEEK_SET);
 	fwrite(s->data, 1, SECTOR_SIZE, f);
+	fflush(f);
 }
 
 
@@ -740,6 +741,24 @@ static char node_exists_in_directory(uint_dsk directory_node_ptr, char* target_n
 	return 0;
 }
 
+
+/*
+	Find node in directory, and get it!
+*/
+static uint_dsk get_node_in_directory(uint_dsk directory_node_ptr, char* target_name){
+	uint_dsk dptr;
+	uint_dsk r;
+	s_allocator = load_sector(directory_node_ptr);
+	if(directory_node_ptr) /*SPECIAL CASE- the root node.*/
+		dptr = sector_fetch_dptr(&s_allocator);
+	else
+		dptr = sector_fetch_rptr(&s_allocator);
+	if(dptr == 0) return 0; /*Zero entries in the directory.*/
+	r = walk_nodes_right(dptr, target_name);
+	if(r) return r;
+	return 0;
+}
+
 static void append_node_right(uint_dsk sibling, uint_dsk newbie){
 	s_allocator = load_sector(sibling);
 	s_walker = load_sector(newbie);
@@ -846,6 +865,60 @@ static char node_remove_down(uint_dsk parent){
 	return 1;
 }
 /*
+	Remove a node inside of a directory. Must be entered under lock.
+	MUST BE LOCKED ON ENTRY.
+	ALLOCATION BITMAP NOT UPDATED (LOW LEVEL ROUTINE).
+*/
+static char node_remove_from_dir(
+	uint_dsk node_dir,
+	uint_dsk node_removeme
+){
+	uint_dsk i, i_prev;
+	s_allocator = load_sector(node_dir);
+	s_walker = s_allocator;
+	if(node_dir == 0){ /*Special case- root node.*/
+		i = sector_fetch_rptr(&s_allocator);
+	} else {
+		i = sector_fetch_dptr(&s_allocator);
+	}
+	i_prev = 0;
+	if(i != 0)
+	for(;i != 0;){
+		if(i == node_removeme){
+			/*REMOVE THIS NODE! it is our target.*/
+			if(i_prev == 0 && node_dir == 0){
+				/*Remove from rptr of root node.*/
+				s_allocator = load_sector(i);
+				sector_write_rptr(&s_walker, sector_fetch_rptr(&s_allocator));
+				store_sector(node_dir, &s_walker);
+			} else if(i_prev == 0){
+				/*Reach to our parent- we are the first child.*/
+				s_allocator = load_sector(i);
+				sector_write_dptr(&s_walker, sector_fetch_rptr(&s_allocator));
+				store_sector(node_dir, &s_walker);
+			} else {
+				/*
+					Reach to our right- i_prev is in s_allocator.
+					We store our rptr into the previous guy's rptr.
+				*/
+				s_walker = load_sector(i); /*We don't need */
+				sector_write_rptr(&s_allocator, sector_fetch_rptr(&s_walker));
+				store_sector(i_prev, &s_allocator);
+			}
+			return 1;
+		}
+		i_prev = i;
+		s_allocator = load_sector(i);
+		i = sector_fetch_rptr(&s_allocator);
+	}
+
+	/*fail:*/
+	return 0;
+}
+
+
+
+/*
 	API call for creating an empty file or directory.
 */
 
@@ -910,6 +983,8 @@ static char createEmpty(
 }
 /*
 	Re-Allocate space for a file.
+
+	(API call)
 */
 static char file_realloc(
 	const char* path,
@@ -937,7 +1012,6 @@ static char file_realloc(
 	) return 1; /*Technically, it's already that size.*/
 
 	/*If the new size is zero... We simply free()*/
-	
 	if(newsize == 0)
 	{
 		if(sector_fetch_dptr(&s_worker)){
@@ -1018,13 +1092,90 @@ static char file_realloc(
 	sector_write_dptr(&s_worker, new_location);
 	store_sector(fsnode, &s_worker);
 	unlock_modify_bit();
-
 	return 1;
-
 	fail:
 		unlock_modify_bit();
 		return 0;
 }
+
+
+static sector s_deleter;
+
+/*
+	Delete a file.
+	API Call.
+	
+*/
+static char file_delete(
+	const char* path_to_directory,
+	const char* fname
+){
+	uint_dsk node = 0;
+	uint_dsk node_parentdirectory = 0;
+	uint_dsk bitmap_size, bitmap_where;
+	if(strlen(path_to_directory) == 0) return 0; /*no name!*/
+	if(strlen(path_to_directory) > 65535) return 0; /*Path is too long.*/
+	if(strlen(fname) > (SECTOR_SIZE - (4 * sizeof(uint_dsk) + 3)) ) return 0; /*fname is too large. Note the 3 instead of two- it is intentional.*/
+
+	my_strcpy(pathbuf, path_to_directory);pathsan(pathbuf);
+	if(strcmp(pathbuf, "/") == 0){ /*root directory.*/
+		node_parentdirectory = 0;
+	} else {
+		node_parentdirectory = resolve_path(pathbuf);
+		if(node_parentdirectory == 0) return 0;
+	}
+	/*Pathbuf is now invalid.*/
+	my_strcpy(pathbuf, path_to_directory);		pathsan(pathbuf);
+	my_strcpy(namebuf, fname); 					namesan(namebuf);
+	/*We now have the parent directory! We must fetch the file from the directory.*/
+	node = get_node_in_directory(node_parentdirectory, namebuf);
+	if(node_parentdirectory != 0) s_deleter = load_sector(node_parentdirectory);
+
+	node = get_node_in_directory(
+		node_parentdirectory, 
+		namebuf);
+		s_worker = load_sector(node);
+
+	/*For non-directory nodes, delete their contents.*/
+	if(
+		(!sector_is_directory(&s_worker)) &&
+		sector_fetch_dptr(&s_worker)
+	){
+		my_strcpy(pathbuf, path_to_directory);		pathsan(pathbuf);
+		my_strcpy(namebuf, fname); 					namesan(namebuf);
+		if(strlen(pathbuf) + strlen(namebuf) > 65534) return 0;
+		strcat(pathbuf, "/");
+		strcat(pathbuf, namebuf);
+		char a = file_realloc(pathbuf, 0);
+		if(a == 0) return 0; /*Failure! Couldn't reallocate.*/
+	}
+	node = get_node_in_directory(
+	node_parentdirectory, 
+	namebuf);
+	s_worker = load_sector(node);
+	/*If it has contents now, it cannot be saved.*/
+	if( sector_fetch_dptr(&s_worker) )return 0;
+
+	/**/
+	get_allocation_bitmap_info(&bitmap_size, &bitmap_where);
+	
+	lock_modify_bit();
+	node_remove_from_dir(
+		node_parentdirectory,
+		node
+	);
+	bitmap_dealloc_nodes(
+		bitmap_size,
+		bitmap_where,
+		node,
+		1
+	);
+	unlock_modify_bit();
+
+	return 1;
+}
+
+
 
 /*
 	Code to initialize a disk.
