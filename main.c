@@ -19,7 +19,7 @@ void my_strcpy(char* dest, const char* src){
 	*dest = 0;
 }
 
-/*0x20000000 is 512 megs*/
+
 
 /*
 	~~~~~~~~~~~~~~~~~~~~~~~CONFIGURABLES~~~~~~~~~~~~~~~~~~~
@@ -819,7 +819,9 @@ static uint_dsk resolve_path(
 			} else {
 				/*Whatever we got, it's it!*/
 				if(candidate_node == 0)
-					{printf("resolve_path: Discovered NULL at end.\r\n");return 0;}
+					{
+					/*printf("resolve_path: Discovered NULL at end.\r\n");*/
+					return 0;}
 				return candidate_node;
 			}
 		}
@@ -858,7 +860,7 @@ static void append_node_right(uint_dsk sibling, uint_dsk newbie){
 */
 static void append_node_to_dir(uint_dsk directory_node_ptr, uint_dsk new_node){
 	if(directory_node_ptr == 0){ /*SPECIAL CASE- trying to create a new file in root.*/
-		printf("W: append_node_to_dir: Special case- root node.\r\n");
+		/*printf("W: append_node_to_dir: Special case- root node.\r\n");*/
 		append_node_right(directory_node_ptr, new_node);
 		return;
 	}
@@ -1023,21 +1025,20 @@ static char file_createempty(
 	get_allocation_bitmap_info(&bitmap_size, &bitmap_where);
 	if(strcmp(path, "/") != 0)
 	{
-		printf("DEBUG: file_createempty: about to resolve path %s\r\n", pathbuf);fflush(stdout);
+		/*printf("DEBUG: file_createempty: about to resolve path %s\r\n", pathbuf);fflush(stdout);*/
 		directorynode = resolve_path(pathbuf);
-		printf("DEBUG: file_createempty: resolved path %s\r\n", pathbuf);fflush(stdout);
+		/*printf("DEBUG: file_createempty: resolved path %s\r\n", pathbuf);fflush(stdout);*/
 		if(directorynode == 0) {printf("file_createempty: directory node failed to resolve.\r\n");return 0;}
-		/*TODO: remove DEBUG*/ if(directorynode == 1){printf("DEBUG: file_createempty: directory node resolved to 1.\r\n"); }
 		/*We need to check if it really is a directory!*/
 		s_worker = load_sector(directorynode);
 		if(!sector_is_directory(&s_worker)) {printf("file_createempty: directory node isn't a directory.\r\n");return 0;} /*Not a directory! You can't put files in it!*/
 	} else {
 		directorynode = 0;
 	}
-	printf("file_createempty: about to search if exists\r\n");
+	/*printf("file_createempty: about to search if exists\r\n");*/
 	/*Check if the file already exists.*/
 	if(node_exists_in_directory(directorynode, namebuf)) {printf("file_createempty: file exists in directory.\r\n");return 0;}
-	printf("file_createempty: about to lock\r\n");
+	/*printf("file_createempty: about to lock\r\n");*/
 	/*Step 1: lock*/
 	lock_modify_bit();
 		/*Step 2: allocate the node.*/
@@ -1045,11 +1046,11 @@ static char file_createempty(
 		if(alloced_node == 0) {printf("file_createempty: could not allocate space.\r\n");goto fail;} /*Failed allocation.*/
 		/*Write the permission bits and whatnot in.*/
 		s_worker = load_sector(alloced_node);
-		sector_write_fname(&s_worker, namebuf);
-		sector_write_dptr(&s_worker, 0);
-		sector_write_size(&s_worker, 0);
-		sector_write_perm_bits(&s_worker, permbits);
-		sector_write_ownerid(&s_worker, owner);
+			sector_write_fname(&s_worker, namebuf);
+			sector_write_dptr(&s_worker, 0);
+			sector_write_size(&s_worker, 0);
+			sector_write_perm_bits(&s_worker, permbits);
+			sector_write_ownerid(&s_worker, owner);
 		store_sector(alloced_node, &s_worker);
 		/*Step 3: append node to directory! (TODO: REDUNDANT READ AND WRITE HERE...)*/
 		append_node_to_dir(directorynode, alloced_node); /*This actually has a special case for the root node.*/
@@ -1290,19 +1291,18 @@ static char file_realloc(
 	
 	if(need_to_copy)
 		{uint_dsk i = 0;
-			printf("DEBUG: <FILE REALLOC> Copying data...\r\n");
+			/*printf("DEBUG: <FILE REALLOC> Copying data...\r\n");*/
 			for(; i < ( (size_to_copy + SECTOR_SIZE - 1) / SECTOR_SIZE ); i++){
 				s_walker = load_sector(sector_fetch_dptr(&s_worker) + i);
 				store_sector(new_location + i, &s_walker);
 			}
-			printf("DEBUG: <FILE REALLOC> Done Copying data...\r\n");
+			/*printf("DEBUG: <FILE REALLOC> Done Copying data...\r\n");*/
 		}
 	/*Step 3: Release.*/
 	
 	if(sector_fetch_dptr(&s_worker))
 	{
 		uint_dsk nsectors_to_dealloc;
-		printf("DEBUG: <FILE REALLOC> Deallocating......\r\n"); fflush(stdout);
 			nsectors_to_dealloc = (sector_fetch_size(&s_worker) + SECTOR_SIZE - 1) / SECTOR_SIZE;
 			if(nsectors_to_dealloc == 0) {printf("W: file_realloc: zero size file reached release.\r\n");nsectors_to_dealloc++;} /*size was 0.*/
 			bitmap_dealloc_nodes(
@@ -1311,7 +1311,6 @@ static char file_realloc(
 				sector_fetch_dptr(&s_worker),
 				nsectors_to_dealloc
 			);
-		printf("DEBUG: <FILE REALLOC> Done Deallocating......\r\n"); fflush(stdout);
 	}
 	/*Step 4: Relink*/
 	sector_write_dptr(&s_worker, new_location);
