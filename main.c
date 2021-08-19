@@ -9,9 +9,12 @@
 */
 #include "MHS.h"
 
+/*How many sectors are on the disk?*/
+#define MHS_DISK_SIZE 0x10000
+
 FILE* f; /*the disk.*/
 static sector sector_loader;
-sector load_sector(uint_dsk where){
+sector load_sector(MHS_UINT where){
 	where += MHS_SECTOR_OFFSET;
 	if(where >= MHS_DISK_SIZE){
 		printf("<ERROR> Attempted to load sector %lu which is beyond sector bounds.", (unsigned long)where);
@@ -23,7 +26,7 @@ sector load_sector(uint_dsk where){
 /*
 	Store a sector to the disk.
 */
-void store_sector(uint_dsk where, sector* s){
+void store_sector(MHS_UINT where, sector* s){
 	where += MHS_SECTOR_OFFSET;
 	if(where >= MHS_DISK_SIZE){
 		printf("<ERROR> Attempted to load sector %lu which is beyond sector bounds.", (unsigned long)where);
@@ -43,7 +46,7 @@ void store_sector(uint_dsk where, sector* s){
 */
 
 static void disk_init(){
-	uint_dsk allocation_bitmap_size;
+	MHS_UINT allocation_bitmap_size;
 	allocation_bitmap_size = (MHS_DISK_SIZE  - MHS_SECTOR_OFFSET)/8; /*NUMBER OF BYTES. Not number of sectors.*/
 	{
 		sector bruh = {0};
@@ -106,7 +109,7 @@ int main(int argc, char** argv){
 
 	if(strcmp(argv[1], "ls") == 0){
 		char a;
-		uint_dsk i = 0;
+		MHS_UINT i = 0;
 		printf("<DIRECTORY LISTING>\r\n");
 		for(;;){
 			a = file_get_dir_entry_by_index(
@@ -144,7 +147,7 @@ int main(int argc, char** argv){
 		);
 		return 0;
 	} else if(strcmp(argv[1], "st") == 0){
-		uint_dsk i, len;
+		MHS_UINT i, len;
 		char a;
 		FILE* q;
 		/*
@@ -190,8 +193,8 @@ int main(int argc, char** argv){
 	} else if(strcmp(argv[1], "gt") == 0) {
 		FILE* q;
 		char a;
-		uint_dsk len;
-		uint_dsk j = 0;
+		MHS_UINT len;
+		MHS_UINT j = 0;
 		MHS_strcpy(ubuf, argv[3]);
 		q = fopen(argv[2], "wb");
 		a = file_read_node(ubuf, &usect);
