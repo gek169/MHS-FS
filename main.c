@@ -739,7 +739,7 @@ static uint_dsk get_node_in_directory(uint_dsk directory_node_ptr, char* target_
 	uint_dsk dptr;
 	uint_dsk r;
 	s_walker = load_sector(directory_node_ptr);
-	if(directory_node_ptr) 
+	if(directory_node_ptr)
 		dptr = sector_fetch_dptr(&s_walker);
 	else /*SPECIAL CASE- the root node.*/
 		dptr = sector_fetch_rptr(&s_walker);
