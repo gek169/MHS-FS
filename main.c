@@ -25,50 +25,51 @@ void my_strcpy(char* dest, const char* src){
 	~~~~~~~~~~~~~~~~~~~~~~~CONFIGURABLES~~~~~~~~~~~~~~~~~~~
 */
 
-#define NATTRIBS 4
+#define MHS_NATTRIBS 4
 /*How many sectors are on the disk?*/
-#define DISK_SIZE 0x10000
+#define MHS_DISK_SIZE 0x10000
 /*Sector size?*/
-#define SECTOR_SIZE 512
+#define MHS_SECTOR_SIZE 512
 /*How many sectors to "skip" for some boot code or MBR*/
-#define SECTOR_OFFSET 0
+#define MHS_SECTOR_OFFSET 0
 #define BITMAP_START 0x20
 
-#define IS_DIRECTORY 32768
-#define IS_SUID 16384
-#define OWNER_R 8192
-#define OWNER_W 4096
-#define OWNER_X 2048
-#define PUBLIC_R 1024
-#define PUBLIC_W 512
-#define PUBLIC_X 256
+#define MHS_IS_DIR 32768
+#define MHS_SUID 16384
+#define MHS_O_R 8192
+#define MHS_O_W 4096
+#define MHS_O_X 2048
+#define MHS_P_R 1024
+#define MHS_P_W 512
+#define MHS_P_X 256
 
-#define GROUP_R 128
-#define GROUP_W 64
-#define GROUP_X 32
-#define IS_GUID 16
+#define MHS_G_R 128
+#define MHS_G_W 64
+#define MHS_G_X 32
+#define MHS_GUID 16
+/*
 #define UNUSED_PERM_1 8
 #define UNUSED_PERM_2 4
 #define UNUSED_PERM_3 2
 #define UNUSED_PERM_4 1
-
+*/
 typedef unsigned int uint_dsk; /*32 or 64 bit integer.*/
 typedef unsigned short ushort; /*16 bit unsigned int.*/
 FILE* f; /*the disk.*/
 typedef struct{
-	unsigned char data[SECTOR_SIZE];
+	unsigned char data[MHS_SECTOR_SIZE];
 } sector;
 
 typedef struct{
-	char d[SECTOR_SIZE - (NATTRIBS * sizeof(uint_dsk) + 2)];
+	char d[MHS_SECTOR_SIZE - (MHS_NATTRIBS * sizeof(uint_dsk) + 2)];
 } fname_string;
 
 static void sector_write_byte(sector* sect, uint_dsk loc, unsigned char byte){
-	loc %= (SECTOR_SIZE - 1);sect->data[loc] = byte;
+	loc %= (MHS_SECTOR_SIZE - 1);sect->data[loc] = byte;
 }
 
 static unsigned char sector_read_byte(sector* sect, uint_dsk loc){
-	loc %= (SECTOR_SIZE - 1);return sect->data[loc];
+	loc %= (MHS_SECTOR_SIZE - 1);return sect->data[loc];
 }
 
 void sector_write_uint_dsk(sector* sect, uint_dsk loc, uint_dsk val){
@@ -113,8 +114,8 @@ void sector_write_perm_bits(sector* sect, ushort permbits){
 }
 
 
-unsigned char sector_is_directory(sector* sect){
-	return ((sector_fetch_perm_bits(sect) & IS_DIRECTORY) != 0);
+unsigned char sector_is_dir(sector* sect){
+	return ((sector_fetch_perm_bits(sect) & MHS_IS_DIR) != 0);
 }
 
 uint_dsk sector_fetch_ownerid(sector* sect){
@@ -182,9 +183,9 @@ void sector_write_size(sector* sect, uint_dsk val){
 char* sector_fetch_fname(sector* sect){
 	uint_dsk loc = 0;
 	loc+= 2; /*permission bits.*/
-	loc+= NATTRIBS * sizeof(uint_dsk); /*ownerid*/
-	if(sect->data[SECTOR_SIZE - 1]){
-		sect->data[SECTOR_SIZE - 1] = '\0'; /*guarantee null termination. This was a malformed file entry.*/
+	loc+= MHS_NATTRIBS * sizeof(uint_dsk); /*ownerid*/
+	if(sect->data[MHS_SECTOR_SIZE - 1]){
+		sect->data[MHS_SECTOR_SIZE - 1] = '\0'; /*guarantee null termination. This was a malformed file entry.*/
 	}
 	return (char*)sect->data + loc;
 }
@@ -193,14 +194,14 @@ void namesan(char* name){
 	uint_dsk i = 0; /*Have we started iterating?*/
 	if(
 		strlen(name) > 
-		SECTOR_SIZE - (
+		MHS_SECTOR_SIZE - (
 			3 + 
-			(NATTRIBS * sizeof(uint_dsk))
+			(MHS_NATTRIBS * sizeof(uint_dsk))
 		)
 	)
-		name[SECTOR_SIZE - (
+		name[MHS_SECTOR_SIZE - (
 					3 + 
-					(NATTRIBS * sizeof(uint_dsk))
+					(MHS_NATTRIBS * sizeof(uint_dsk))
 				)] = '\0';
 	while(*name){
 		if(i == 0 && *name == '.')
@@ -254,13 +255,13 @@ void sector_write_fname(sector* sect, char* newname){
 	uint_dsk loc = 0;
 	uint_dsk i;
 	loc+= 2; /*permission bits.*/
-	loc+= NATTRIBS * sizeof(uint_dsk); /*ownerid*/
+	loc+= MHS_NATTRIBS * sizeof(uint_dsk); /*ownerid*/
 	namesan(newname);
-	for(i = loc; i < SECTOR_SIZE-1; i++){
+	for(i = loc; i < MHS_SECTOR_SIZE-1; i++){
 		sect->data[i] = newname[i - loc];
 		if(newname[i - loc] == '\0') return;
 	}
-	sect->data[SECTOR_SIZE-1] = '\0';
+	sect->data[MHS_SECTOR_SIZE-1] = '\0';
 }
 
 /*
@@ -269,8 +270,8 @@ void sector_write_fname(sector* sect, char* newname){
 
 uint_dsk sector_fetch_size_in_sectors(sector* sect){
 	uint_dsk fakes = sector_fetch_size(sect);
-	fakes += (SECTOR_SIZE - 1); /*the classic trick for integer ceil() to a multiple.*/
-	fakes /= SECTOR_SIZE;
+	fakes += (MHS_SECTOR_SIZE - 1); /*the classic trick for integer ceil() to a multiple.*/
+	fakes /= MHS_SECTOR_SIZE;
 	return fakes;
 }
 
@@ -281,24 +282,24 @@ uint_dsk sector_fetch_size_in_sectors(sector* sect){
 
 static sector sector_loader;
 static sector load_sector(uint_dsk where){
-	where += SECTOR_OFFSET;
-	if(where >= DISK_SIZE){
+	where += MHS_SECTOR_OFFSET;
+	if(where >= MHS_DISK_SIZE){
 		printf("<ERROR> Attempted to load sector %lu which is beyond sector bounds.", (unsigned long)where);
 	}
-	fseek(f, where * SECTOR_SIZE, SEEK_SET);
-	fread(sector_loader.data, 1, SECTOR_SIZE, f);
+	fseek(f, where * MHS_SECTOR_SIZE, SEEK_SET);
+	fread(sector_loader.data, 1, MHS_SECTOR_SIZE, f);
 	return sector_loader;
 }
 /*
 	Store a sector to the disk.
 */
 static void store_sector(uint_dsk where, sector* s){
-	where += SECTOR_OFFSET;
-	if(where >= DISK_SIZE){
+	where += MHS_SECTOR_OFFSET;
+	if(where >= MHS_DISK_SIZE){
 		printf("<ERROR> Attempted to load sector %lu which is beyond sector bounds.", (unsigned long)where);
 	}
-	fseek(f, where * SECTOR_SIZE, SEEK_SET);
-	fwrite(s->data, 1, SECTOR_SIZE, f);
+	fseek(f, where * MHS_SECTOR_SIZE, SEEK_SET);
+	fwrite(s->data, 1, MHS_SECTOR_SIZE, f);
 	fflush(f);
 }
 
@@ -353,15 +354,15 @@ static uint_dsk bitmap_find_and_alloc_single_node(
 			
 		*/
 		/**/
-		if(i > (8 * SECTOR_SIZE))
-			if((i/8) % SECTOR_SIZE == 0){
+		if(i > (8 * MHS_SECTOR_SIZE))
+			if((i/8) % MHS_SECTOR_SIZE == 0){
 				bitmap_where++;
 				s_allocator = load_sector(bitmap_where);
 			}
-		p = s_allocator.data[ (i%SECTOR_SIZE)/8];
-		q = p & (1<< ((i%SECTOR_SIZE)%8));
+		p = s_allocator.data[ (i%MHS_SECTOR_SIZE)/8];
+		q = p & (1<< ((i%MHS_SECTOR_SIZE)%8));
 		if(q == 0) { /*Free slot! Mark it as used.*/
-			s_allocator.data[ (i%SECTOR_SIZE)/8] = p | (1<< ((i%SECTOR_SIZE)%8));
+			s_allocator.data[ (i%MHS_SECTOR_SIZE)/8] = p | (1<< ((i%MHS_SECTOR_SIZE)%8));
 			store_sector(bitmap_where, &s_allocator);
 			return i;
 		} 
@@ -396,10 +397,10 @@ static void bitmap_alloc_nodes(
 			Generate a block-relative position from nodeid.
 		*/
 		while(
-			nodeid >= (8 * SECTOR_SIZE)
+			nodeid >= (8 * MHS_SECTOR_SIZE)
 		){
 			bitmap_offset++;
-			nodeid -= 8 * SECTOR_SIZE;
+			nodeid -= 8 * MHS_SECTOR_SIZE;
 		}
 		s_allocator = load_sector(bitmap_where + bitmap_offset);
 		/*
@@ -422,7 +423,7 @@ static void bitmap_alloc_nodes(
 			*/
 			if(
 				nnodes > 1 && /*This is not the last node to mark.*/
-				(nodeid + 1) < (SECTOR_SIZE*8) /*Its bit resides in the current sector of the bitmap.*/
+				(nodeid + 1) < (MHS_SECTOR_SIZE*8) /*Its bit resides in the current sector of the bitmap.*/
 			){
 				nodeid++; 
 				nodeid_in++; /*Remember to increment this too!*/
@@ -464,10 +465,10 @@ static void bitmap_dealloc_nodes(
 			Generate a block-relative position from nodeid.
 		*/
 		while(
-			nodeid >= (8 * SECTOR_SIZE)
+			nodeid >= (8 * MHS_SECTOR_SIZE)
 		){
 			bitmap_offset++;
-			nodeid -= 8 * SECTOR_SIZE;
+			nodeid -= 8 * MHS_SECTOR_SIZE;
 		}
 		s_allocator = load_sector(bitmap_where + bitmap_offset);
 		/*
@@ -491,7 +492,7 @@ static void bitmap_dealloc_nodes(
 			*/
 			if(
 				nnodes > 1 && /*This is not the last node to mark.*/
-				(nodeid + 1) < (SECTOR_SIZE*8) /*Its bit resides in the current sector of the bitmap.*/
+				(nodeid + 1) < (MHS_SECTOR_SIZE*8) /*Its bit resides in the current sector of the bitmap.*/
 			){
 				nodeid++; 
 				nodeid_in++;
@@ -517,10 +518,10 @@ static uint_dsk bitmap_find_and_alloc_multiple_nodes(
 	/*How many are actually needed?*/
 	uint_dsk needed
 ){
- 	uint_dsk i = bitmap_where + ((bitmap_size + SECTOR_SIZE - 1) / SECTOR_SIZE); /*Begin searching the disk beyond the bitmap.*/
+ 	uint_dsk i = bitmap_where + ((bitmap_size + MHS_SECTOR_SIZE - 1) / MHS_SECTOR_SIZE); /*Begin searching the disk beyond the bitmap.*/
  	uint_dsk run = 0;
  	char have_iterated = 0;
- 	uint_dsk bitmap_offset = i / (8 * SECTOR_SIZE); /*What sector of the bitmap are we searching?*/
+ 	uint_dsk bitmap_offset = i / (8 * MHS_SECTOR_SIZE); /*What sector of the bitmap are we searching?*/
 
 	/*printf("bitmap_find_and_alloc_multiple_nodes: attempting to find %lu nodes starting at %lu\r\n", (unsigned long)needed, (unsigned long)i);*/
  	
@@ -528,7 +529,7 @@ static uint_dsk bitmap_find_and_alloc_multiple_nodes(
  	/*if(needed == 1) printf("DEBUG: WARNING: size 1???");*/
  	s_allocator = load_sector(bitmap_where + bitmap_offset);
 	for(
-		i = bitmap_where + ((bitmap_size + SECTOR_SIZE - 1) / SECTOR_SIZE);
+		i = bitmap_where + ((bitmap_size + MHS_SECTOR_SIZE - 1) / MHS_SECTOR_SIZE);
 		i < (bitmap_size * 8);
 		i++
 	){
@@ -538,12 +539,12 @@ static uint_dsk bitmap_find_and_alloc_multiple_nodes(
 			Did we just cross into the next sector?
 			If so, load the next sector!
 		*/
-		if(have_iterated && (i/8) % SECTOR_SIZE == 0){
+		if(have_iterated && (i/8) % MHS_SECTOR_SIZE == 0){
 			bitmap_offset++;
 			s_allocator = load_sector(bitmap_offset + bitmap_where);
 		}
-		p = s_allocator.data[ (i%SECTOR_SIZE)/8];
-		q = p & (1<< ((i%SECTOR_SIZE)%8));
+		p = s_allocator.data[ (i%MHS_SECTOR_SIZE)/8];
+		q = p & (1<< ((i%MHS_SECTOR_SIZE)%8));
 		if(q == 0) { /*Free slot! Increment run.*/
 			run++;
 			
@@ -577,7 +578,7 @@ static uint_dsk bitmap_find_and_alloc_multiple_nodes(
 */
 static sector bruh_msect = {0};
 static sector get_datasect(sector* sect){
-	memset(&bruh_msect, 0, SECTOR_SIZE);
+	memset(&bruh_msect, 0, MHS_SECTOR_SIZE);
 	uint_dsk datapointer = sector_fetch_dptr(sect);
 	if(datapointer == 0) return bruh_msect;
 	bruh_msect = load_sector(datapointer);
@@ -804,7 +805,7 @@ static uint_dsk resolve_path(
 				}
 				else {
 					s_seeker = load_sector(candidate_node);
-					if(!sector_is_directory(&s_seeker)){
+					if(!sector_is_dir(&s_seeker)){
 					/*printf("resolve_path: Expected to go into a file?\r\n");return 0;*/
 					}
 					current_node_searching = candidate_node;
@@ -899,7 +900,7 @@ static char node_remove_right(uint_dsk sibling){
 		A directory with contents cannot be deleted. You must delete all the files in it first.
 	*/
 	if(
-			sector_is_directory(&s_appender2)
+			sector_is_dir(&s_appender2)
 		&&	sector_fetch_dptr(&s_appender2)
 	){
 		{printf("node_remove_right: Cannot remove directory with contents.\r\n");return 0;} /*Failure! Cannot delete node- it is a directory with contents.*/
@@ -920,7 +921,7 @@ static char node_remove_right(uint_dsk sibling){
 static char node_remove_down(uint_dsk parent){
 	uint_dsk deletemeid;
 	s_appender = load_sector(parent);
-	if(!sector_is_directory(&s_appender)) {printf("node_remove_down: Node is not a directory.\r\n");return 0;} /*Not a directory... can't do it, sorry.*/
+	if(!sector_is_dir(&s_appender)) {printf("node_remove_down: Node is not a directory.\r\n");return 0;} /*Not a directory... can't do it, sorry.*/
 	deletemeid = sector_fetch_dptr(&s_appender);
 	if(deletemeid == 0) {printf("node_remove_down: Node has null dptr.\r\n");return 0;} /*We cannot remove a node that does not exist.*/
 	s_appender2 = load_sector(deletemeid);
@@ -992,7 +993,7 @@ static char node_remove_from_dir(
 */
 
 static char pathbuf[0x10000];
-static char namebuf[SECTOR_SIZE - (4 * sizeof(uint_dsk) + 2)];
+static char namebuf[MHS_SECTOR_SIZE - (MHS_NATTRIBS * sizeof(uint_dsk) + 2)];
 static sector s_worker;
 static sector s_worker2;
 
@@ -1010,7 +1011,7 @@ static char file_createempty(
 	if(strlen(path) == 0) {printf("file_createempty: path empty.\r\n");return 0;} /*Cannot create a directory with no name!*/
 	if(strlen(path) > 65535) {printf("file_createempty: path too long.\r\n");return 0;} /*Path is too long.*/
 	if(strlen(fname) == 0) {printf("file_createempty: fname is empty.\r\n");return 0;}
-	if(strlen(fname) > (SECTOR_SIZE - (NATTRIBS * sizeof(uint_dsk) + 3)) ) {printf("file_createempty: fname too long.\r\n");return 0;} /*fname is too large. Note the 3 instead of two- it is intentional.*/
+	if(strlen(fname) > (MHS_SECTOR_SIZE - (MHS_NATTRIBS * sizeof(uint_dsk) + 3)) ) {printf("file_createempty: fname too long.\r\n");return 0;} /*fname is too large. Note the 3 instead of two- it is intentional.*/
 	
 	my_strcpy(pathbuf, (char*)path);
 	pathsan(pathbuf);
@@ -1027,7 +1028,7 @@ static char file_createempty(
 		if(directorynode == 0) {printf("file_createempty: directory node failed to resolve.\r\n");return 0;}
 		/*We need to check if it really is a directory!*/
 		s_worker = load_sector(directorynode);
-		if(!sector_is_directory(&s_worker)) {printf("file_createempty: directory node isn't a directory.\r\n");return 0;} /*Not a directory! You can't put files in it!*/
+		if(!sector_is_dir(&s_worker)) {printf("file_createempty: directory node isn't a directory.\r\n");return 0;} /*Not a directory! You can't put files in it!*/
 	} else {
 		directorynode = 0;
 	}
@@ -1082,11 +1083,11 @@ static char file_read_sector(
 
 	s_worker2 = load_sector(res);
 
-	if(sector_is_directory(&s_worker2)) {printf("file_read_sector: path points to directory.\r\n");return 0;}/*Cannot read from a directory.*/
+	if(sector_is_dir(&s_worker2)) {printf("file_read_sector: path points to directory.\r\n");return 0;}/*Cannot read from a directory.*/
 	if(sector_fetch_dptr(&s_worker2) == 0) {printf("file_read_sector: file has NULL dptr.\r\n");return 0;}
 	if(sector_fetch_size(&s_worker2) <= offset) {return 0;} /*Too big!*/
 	
-	*dest = load_sector((offset / SECTOR_SIZE) + sector_fetch_dptr(&s_worker2));
+	*dest = load_sector((offset / MHS_SECTOR_SIZE) + sector_fetch_dptr(&s_worker2));
 	return 1;
 }
 
@@ -1138,18 +1139,18 @@ static char file_write_sector(
 
 	s_worker2 = load_sector(res);
 
-	if(sector_is_directory(&s_worker2)) {printf("file_write_sector: path points to directory.\r\n");return 0;}/*Cannot read from a directory.*/
+	if(sector_is_dir(&s_worker2)) {printf("file_write_sector: path points to directory.\r\n");return 0;}/*Cannot read from a directory.*/
 	if(sector_fetch_dptr(&s_worker2) == 0) {printf("file_write_sector: file has NULL dptr.\r\n");return 0;}
 	if(sector_fetch_size(&s_worker2) <= offset) {printf("file_write_sector: file is too small.\r\n");return 0;} /*Too big!*/
 
 /*
 	printf(
 		"DEBUG: offset calculation is %lu, was %lu\r\n", 
-		(unsigned long)(offset / SECTOR_SIZE), 
+		(unsigned long)(offset / MHS_SECTOR_SIZE), 
 		(unsigned long)offset
 	);*/
 	store_sector(
-		(offset / SECTOR_SIZE) + sector_fetch_dptr(&s_worker2), newcontents
+		(offset / MHS_SECTOR_SIZE) + sector_fetch_dptr(&s_worker2), newcontents
 	); /*Perform storage.*/
 	return 1;
 }
@@ -1179,7 +1180,7 @@ static char file_get_dir_entry_by_index(
 		res = resolve_path(pathbuf);
 		if (res == 0) {return 0;}
 		s_worker2 = load_sector(res);
-		if(!sector_is_directory(&s_worker2)) {return 0;} /*Trying to list a file like a directory???*/
+		if(!sector_is_dir(&s_worker2)) {return 0;} /*Trying to list a file like a directory???*/
 		res = sector_fetch_dptr(&s_worker2);
 	}
 	for(i = 0; i < n; i++){
@@ -1217,7 +1218,7 @@ static char file_realloc(
 	fsnode = resolve_path(pathbuf); /*pathbuf is ruined after this.*/
 	if(fsnode == 0) {printf("file_realloc: file failed to resolve.\r\n");return 0;} /*FAILURE! Does not exist.*/
 	s_worker = load_sector(fsnode);
-	if(sector_is_directory(&s_worker)) return 0; /*FAILURE! it's a directory, not a file!*/
+	if(sector_is_dir(&s_worker)) return 0; /*FAILURE! it's a directory, not a file!*/
 	if(
 		sector_fetch_dptr(&s_worker) && /*Not a NULL file...*/
 		(sector_fetch_size(&s_worker) == newsize)
@@ -1230,7 +1231,7 @@ static char file_realloc(
 			uint_dsk nsectors_to_dealloc;
 			get_allocation_bitmap_info(&bitmap_size, &bitmap_where);
 			lock_modify_bit();
-				nsectors_to_dealloc = (sector_fetch_size(&s_worker) + SECTOR_SIZE - 1) / SECTOR_SIZE;
+				nsectors_to_dealloc = (sector_fetch_size(&s_worker) + MHS_SECTOR_SIZE - 1) / MHS_SECTOR_SIZE;
 				if(nsectors_to_dealloc == 0) nsectors_to_dealloc++;
 				bitmap_dealloc_nodes(
 					bitmap_size,
@@ -1252,9 +1253,9 @@ static char file_realloc(
 	*/
 	if(sector_fetch_dptr(&s_worker))
 	if( 
-		((newsize+SECTOR_SIZE-1) / SECTOR_SIZE)
+		((newsize+MHS_SECTOR_SIZE-1) / MHS_SECTOR_SIZE)
 		== 
-		((sector_fetch_size(&s_worker)+SECTOR_SIZE-1) / SECTOR_SIZE)
+		((sector_fetch_size(&s_worker)+MHS_SECTOR_SIZE-1) / MHS_SECTOR_SIZE)
 	){
 		sector_write_size(&s_worker, newsize);
 		store_sector(fsnode, &s_worker); /*The write is atomic. No need to lock and unlock.*/
@@ -1277,7 +1278,7 @@ static char file_realloc(
 		bitmap_find_and_alloc_multiple_nodes(
 			bitmap_size, 
 			bitmap_where,
-			(newsize + SECTOR_SIZE - 1) / SECTOR_SIZE
+			(newsize + MHS_SECTOR_SIZE - 1) / MHS_SECTOR_SIZE
 		);
 	if(new_location == 0) {printf("file_realloc: failed to allocate space for file.\r\n");goto fail;}
 	if(new_location < bitmap_where){
@@ -1288,7 +1289,7 @@ static char file_realloc(
 	if(need_to_copy)
 		{uint_dsk i = 0;
 			/*printf("DEBUG: <FILE REALLOC> Copying data...\r\n");*/
-			for(; i < ( (size_to_copy + SECTOR_SIZE - 1) / SECTOR_SIZE ); i++){
+			for(; i < ( (size_to_copy + MHS_SECTOR_SIZE - 1) / MHS_SECTOR_SIZE ); i++){
 				s_walker = load_sector(sector_fetch_dptr(&s_worker) + i);
 				store_sector(new_location + i, &s_walker);
 			}
@@ -1299,7 +1300,7 @@ static char file_realloc(
 	if(sector_fetch_dptr(&s_worker))
 	{
 		uint_dsk nsectors_to_dealloc;
-			nsectors_to_dealloc = (sector_fetch_size(&s_worker) + SECTOR_SIZE - 1) / SECTOR_SIZE;
+			nsectors_to_dealloc = (sector_fetch_size(&s_worker) + MHS_SECTOR_SIZE - 1) / MHS_SECTOR_SIZE;
 			if(nsectors_to_dealloc == 0) {printf("W: file_realloc: zero size file reached release.\r\n");nsectors_to_dealloc++;} /*size was 0.*/
 			bitmap_dealloc_nodes(
 				bitmap_size,
@@ -1336,7 +1337,7 @@ static char file_delete(
 	uint_dsk bitmap_size, bitmap_where;
 	if(strlen(path_to_directory) == 0) {printf("file_delete: path_to_directory is empty.\r\n");return 0;} /*no name!*/
 	if(strlen(path_to_directory) > 65535) {printf("file_delete: path_to_directory is too long.\r\n");return 0;} /*Path is too long.*/
-	if(strlen(fname) > (SECTOR_SIZE - (NATTRIBS * sizeof(uint_dsk) + 3)) ) return 0; /*fname is too large. Note the 3 instead of two- it is intentional.*/
+	if(strlen(fname) > (MHS_SECTOR_SIZE - (MHS_NATTRIBS * sizeof(uint_dsk) + 3)) ) return 0; /*fname is too large. Note the 3 instead of two- it is intentional.*/
 
 	my_strcpy(pathbuf, path_to_directory);pathsan(pathbuf);
 	if(strcmp(pathbuf, "/") == 0){ /*root directory.*/
@@ -1359,7 +1360,7 @@ static char file_delete(
 
 	/*For non-directory nodes, delete their contents.*/
 	if(
-		(!sector_is_directory(&s_deleter2)) &&
+		(!sector_is_dir(&s_deleter2)) &&
 		sector_fetch_dptr(&s_deleter2)
 	){
 		my_strcpy(pathbuf, path_to_directory);		pathsan(pathbuf);
@@ -1405,10 +1406,10 @@ static char file_delete(
 
 static void disk_init(){
 	uint_dsk allocation_bitmap_size;
-	allocation_bitmap_size = (DISK_SIZE  - SECTOR_OFFSET)/8; /*NUMBER OF BYTES. Not number of sectors.*/
+	allocation_bitmap_size = (MHS_DISK_SIZE  - MHS_SECTOR_OFFSET)/8; /*NUMBER OF BYTES. Not number of sectors.*/
 	{
 		sector bruh = {0};
-		sector_write_perm_bits(&bruh, OWNER_R | PUBLIC_R);
+		sector_write_perm_bits(&bruh, MHS_O_R | MHS_P_R);
 		sector_write_fname(&bruh, "some very long text i am testing");
 		sector_write_dptr(&bruh, BITMAP_START);
 		sector_write_size(&bruh, allocation_bitmap_size);
@@ -1439,7 +1440,7 @@ int main(int argc, char** argv){
 		unsigned long i;
 		f = fopen("disk.dsk", "wb");
 		if(!f) return 1;
-		for(i = 0; i < (DISK_SIZE * SECTOR_SIZE); i++)
+		for(i = 0; i < (MHS_DISK_SIZE * MHS_SECTOR_SIZE); i++)
 			fputc(0, f);
 		fclose(f);
 		f = fopen("disk.dsk", "rb+");
@@ -1477,7 +1478,7 @@ int main(int argc, char** argv){
 				
 				file_read_node(ubuf2, &usect);
 				if(
-					sector_fetch_perm_bits(&usect) & IS_DIRECTORY
+					sector_fetch_perm_bits(&usect) & MHS_IS_DIR
 				)
 					printf("DIR\r\n");
 				else{
@@ -1507,7 +1508,7 @@ int main(int argc, char** argv){
 			argv[2],
 			argv[3],
 			0,
-			OWNER_R | OWNER_W | OWNER_X
+			MHS_O_R | MHS_O_W | MHS_O_X
 		);
 		my_strcpy(ubuf, argv[2]);
 		strcat(ubuf, "/");
@@ -1527,9 +1528,9 @@ int main(int argc, char** argv){
 			printf("<ERROR> could not do file_realloc.");
 			return 1;
 		}
-		for(i = 0; i < (len + SECTOR_SIZE - 1) / SECTOR_SIZE; i++){
-			fread(usect.data, 1, SECTOR_SIZE, q);
-			file_write_sector(ubuf, (i * SECTOR_SIZE), &usect);
+		for(i = 0; i < (len + MHS_SECTOR_SIZE - 1) / MHS_SECTOR_SIZE; i++){
+			fread(usect.data, 1, MHS_SECTOR_SIZE, q);
+			file_write_sector(ubuf, (i * MHS_SECTOR_SIZE), &usect);
 		}
 		return 0;
 	} else if(strcmp(argv[1], "mkdir") == 0){
@@ -1537,7 +1538,7 @@ int main(int argc, char** argv){
 			argv[2],
 			argv[3],
 			0,
-			OWNER_R | OWNER_W | OWNER_X | IS_DIRECTORY
+			MHS_O_R | MHS_O_W | MHS_O_X | MHS_IS_DIR
 		);
 		return 0;
 	} else if(strcmp(argv[1], "gt") == 0) {
@@ -1553,11 +1554,11 @@ int main(int argc, char** argv){
 		if(len == 0) return 1;
 		j =sector_fetch_dptr(&usect); 
 		if(j == 0) return 1;
-		if(sector_fetch_perm_bits(&usect) & IS_DIRECTORY ) return 1;
-		for(;len > 0; len -= SECTOR_SIZE){
+		if(sector_fetch_perm_bits(&usect) & MHS_IS_DIR ) return 1;
+		for(;len > 0; len -= MHS_SECTOR_SIZE){
 			usect = load_sector(j++);
-			if(len > SECTOR_SIZE){
-				fwrite(usect.data, SECTOR_SIZE, 1, q); fflush(q);
+			if(len > MHS_SECTOR_SIZE){
+				fwrite(usect.data, MHS_SECTOR_SIZE, 1, q); fflush(q);
 			}else{
 				fwrite(usect.data, len, 1, q); fflush(q);
 				return 0;
