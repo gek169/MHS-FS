@@ -2,7 +2,7 @@ CC= tcc
 CFLAGS= -O3 -std=c89
 
 all:
-	$(CC) $(CFLAGS) main.c -o main.out -lm -g
+	$(CC) $(CFLAGS) main.c 2.c -o main.out -lm -g
 
 retest:
 	$(MAKE) clean
