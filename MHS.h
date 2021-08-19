@@ -14,11 +14,17 @@
 	Implement thse functions:
 
 	~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-		If the disk was being modified during a power shutoff, this should rebuild the bitmap:
+		If the disk was being modified during a power shutoff, this should rebuild the bitmap.
 	
 		Simply walking the entire tree and writing their allocations to the bitmap should work.
 	
 		the bitmap must be cleared to zero (except for the modify bit) before you do that.
+
+		You should invoke check_modify_bit() before you do any file re-allocations (Any WRITES)
+
+		The filesystem is guaranteed to always be left in a valid state as long as sector writes are atomic,
+
+		however the bitmap may be messed up.
 	
 	void disk_rebuild_bitmap();
 	
