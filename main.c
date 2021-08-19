@@ -24,6 +24,8 @@ void my_strcpy(char* dest, const char* src){
 /*
 	~~~~~~~~~~~~~~~~~~~~~~~CONFIGURABLES~~~~~~~~~~~~~~~~~~~
 */
+
+#define NATTRIBS 4
 /*How many sectors are on the disk?*/
 #define DISK_SIZE 0x10000
 /*Sector size?*/
@@ -58,7 +60,7 @@ typedef struct{
 } sector;
 
 typedef struct{
-	char d[SECTOR_SIZE - (4 * sizeof(uint_dsk) + 2)];
+	char d[SECTOR_SIZE - (NATTRIBS * sizeof(uint_dsk) + 2)];
 } fname_string;
 
 static void sector_write_byte(sector* sect, uint_dsk loc, unsigned char byte){
@@ -180,10 +182,7 @@ void sector_write_size(sector* sect, uint_dsk val){
 char* sector_fetch_fname(sector* sect){
 	uint_dsk loc = 0;
 	loc+= 2; /*permission bits.*/
-	loc+= sizeof(uint_dsk); /*ownerid*/
-	loc+= sizeof(uint_dsk); /*rptr*/
-	loc+= sizeof(uint_dsk); /*dptr*/
-	loc+= sizeof(uint_dsk); /*size*/
+	loc+= NATTRIBS * sizeof(uint_dsk); /*ownerid*/
 	if(sect->data[SECTOR_SIZE - 1]){
 		sect->data[SECTOR_SIZE - 1] = '\0'; /*guarantee null termination. This was a malformed file entry.*/
 	}
@@ -196,12 +195,12 @@ void namesan(char* name){
 		strlen(name) > 
 		SECTOR_SIZE - (
 			3 + 
-			(4 * sizeof(uint_dsk))
+			(NATTRIBS * sizeof(uint_dsk))
 		)
 	)
 		name[SECTOR_SIZE - (
 					3 + 
-					(4 * sizeof(uint_dsk))
+					(NATTRIBS * sizeof(uint_dsk))
 				)] = '\0';
 	while(*name){
 		if(i == 0 && *name == '.')
@@ -255,10 +254,7 @@ void sector_write_fname(sector* sect, char* newname){
 	uint_dsk loc = 0;
 	uint_dsk i;
 	loc+= 2; /*permission bits.*/
-	loc+= sizeof(uint_dsk); /*ownerid*/
-	loc+= sizeof(uint_dsk); /*rptr*/
-	loc+= sizeof(uint_dsk); /*dptr*/
-	loc+= sizeof(uint_dsk); /*size*/
+	loc+= NATTRIBS * sizeof(uint_dsk); /*ownerid*/
 	namesan(newname);
 	for(i = loc; i < SECTOR_SIZE-1; i++){
 		sect->data[i] = newname[i - loc];
@@ -521,7 +517,7 @@ static uint_dsk bitmap_find_and_alloc_multiple_nodes(
 	/*How many are actually needed?*/
 	uint_dsk needed
 ){
- 	uint_dsk i = bitmap_where + ((bitmap_size + 511) / SECTOR_SIZE); /*Begin searching the disk beyond the bitmap.*/
+ 	uint_dsk i = bitmap_where + ((bitmap_size + SECTOR_SIZE - 1) / SECTOR_SIZE); /*Begin searching the disk beyond the bitmap.*/
  	uint_dsk run = 0;
  	char have_iterated = 0;
  	uint_dsk bitmap_offset = i / (8 * SECTOR_SIZE); /*What sector of the bitmap are we searching?*/
@@ -532,7 +528,7 @@ static uint_dsk bitmap_find_and_alloc_multiple_nodes(
  	/*if(needed == 1) printf("DEBUG: WARNING: size 1???");*/
  	s_allocator = load_sector(bitmap_where + bitmap_offset);
 	for(
-		i = bitmap_where + ((bitmap_size + 511) / SECTOR_SIZE);
+		i = bitmap_where + ((bitmap_size + SECTOR_SIZE - 1) / SECTOR_SIZE);
 		i < (bitmap_size * 8);
 		i++
 	){
@@ -1014,7 +1010,7 @@ static char file_createempty(
 	if(strlen(path) == 0) {printf("file_createempty: path empty.\r\n");return 0;} /*Cannot create a directory with no name!*/
 	if(strlen(path) > 65535) {printf("file_createempty: path too long.\r\n");return 0;} /*Path is too long.*/
 	if(strlen(fname) == 0) {printf("file_createempty: fname is empty.\r\n");return 0;}
-	if(strlen(fname) > (SECTOR_SIZE - (4 * sizeof(uint_dsk) + 3)) ) {printf("file_createempty: fname too long.\r\n");return 0;} /*fname is too large. Note the 3 instead of two- it is intentional.*/
+	if(strlen(fname) > (SECTOR_SIZE - (NATTRIBS * sizeof(uint_dsk) + 3)) ) {printf("file_createempty: fname too long.\r\n");return 0;} /*fname is too large. Note the 3 instead of two- it is intentional.*/
 	
 	my_strcpy(pathbuf, (char*)path);
 	pathsan(pathbuf);
@@ -1340,7 +1336,7 @@ static char file_delete(
 	uint_dsk bitmap_size, bitmap_where;
 	if(strlen(path_to_directory) == 0) {printf("file_delete: path_to_directory is empty.\r\n");return 0;} /*no name!*/
 	if(strlen(path_to_directory) > 65535) {printf("file_delete: path_to_directory is too long.\r\n");return 0;} /*Path is too long.*/
-	if(strlen(fname) > (SECTOR_SIZE - (4 * sizeof(uint_dsk) + 3)) ) return 0; /*fname is too large. Note the 3 instead of two- it is intentional.*/
+	if(strlen(fname) > (SECTOR_SIZE - (NATTRIBS * sizeof(uint_dsk) + 3)) ) return 0; /*fname is too large. Note the 3 instead of two- it is intentional.*/
 
 	my_strcpy(pathbuf, path_to_directory);pathsan(pathbuf);
 	if(strcmp(pathbuf, "/") == 0){ /*root directory.*/
