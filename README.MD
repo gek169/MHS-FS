@@ -17,28 +17,27 @@ The virtual hard disk is 32 megabytes by default and is initialized to zero if i
 
 # INTEGRATION
 
-Write your own load_sector and store_sector to interact with a real hard disk.
+(See MHS.h for most up-to-date information)
 
-Change uint_dsk to be uint64_t for a more modern OS.
+Include MHS.h in as many files as you like.
 
-change SECTOR_SIZE to be the block size of your choice.
+Modify the SECTOR_SIZE define and the MHS_UINT typedef to be those you would like.
 
-For crash recovery, simply call check_modify_bit() before performing any file actions.
+use the file_ api calls to interact with the filesystem.
 
-The allocation bitmap will have to be regenerated, but as long as sector writes are atomic (I.E. never partial) then
+To modify file node attributes such as permission bits and owner UID and whatnot, you should use resolve_path
+passing in a non-const char array. It is recommended to use the library-provided pathbuf for this purpose which is 64k in size.
 
-the file system should still be in a recoverable state.
+You would then use load_sector, modify the node, and write it back. As long as you don't change the rptr or dptr, this won't require
 
-I have not written the function to re-generate the bitmap as it is expected you will want to implement this yourself- you might,
-for instance, keep a journal kept up by your kernel (or kernel module) which logs filesystem interactions.
+locking the modify bit of the filesystem.
 
-To re-generate the bitmap you must first clear it to zero, then
-visit every node in the filesystem and log its file usage in the bitmap.
+For faster reads/writes it is recommended not to use file_read_sector and file_write_sector but rather to keep a file descriptor open,
+which keeps a cache of the file's size and location on disk for sector load/store ops.
 
-This is an expensive operation but unlike most filesystems it is guaranteed to always recover the filesystem into a working state.
+Every time the file is resized, this information will need to be updated.
 
-The filesystem is definitely still in an early stage in development, so don't put this on your mission-critical mainframes just yet.
-
+See the example program main.c for usage.
 
 # Why this over Fat or Fat32, or other Filesystems
 
@@ -49,7 +48,7 @@ Advantages of MHS-FS over other filesystems:
 2) Zero intellectual property issues. This filesystem and all the code in this repository are fully public domain.
 
 3) Flexible. The filesystem's sector size or default integer size can be changed with relative ease. Additional file attributes can be added
-to the fsnode struct by changing a few lines (Notably, everything that performs calculations with respect to fname...)
+to the fsnode struct by changing MHS_NATTRIBS and adding getters/setters for it (it should be after the existing attributes).
 
 	Trying to "hack" your own version of fat32 is a nightmare.
 

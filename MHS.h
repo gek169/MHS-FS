@@ -11,7 +11,11 @@
 
 	Interactions with the filesystem should be restricted by your kernel.
 
-	Implement thse functions:
+	You should modify MHS_UINT to be the unsigned integer of your choice (you probably want a 64 bit uint for a modern OS...)
+
+	
+
+	Implement these functions:
 
 	~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 		If the disk was being modified during a power shutoff, this should rebuild the bitmap.
@@ -104,11 +108,6 @@ static long MHS_strfind(const char* text, const char* subtext){
 	return -1;
 }
 
-
-
-
-
-
 /*
 	~~~~~~~~~~~~~~~~~~~~~~~CONFIGURABLES~~~~~~~~~~~~~~~~~~~
 */
@@ -117,8 +116,7 @@ static long MHS_strfind(const char* text, const char* subtext){
 
 /*Sector size?*/
 #define MHS_SECTOR_SIZE 512
-/*How many sectors to "skip" for some boot code or MBR*/
-#define MHS_SECTOR_OFFSET 0
+
 #define BITMAP_START 0x20
 
 #define MHS_IS_DIR 32768
@@ -216,41 +214,41 @@ static MHS_USHRT sector_fetch_perm_bits(sector* sect){
 	return val;
 }
 
-void sector_write_perm_bits(sector* sect, MHS_USHRT permbits){
+static void sector_write_perm_bits(sector* sect, MHS_USHRT permbits){
 	sector_write_byte(sect, 0, permbits / 256);
 	sector_write_byte(sect, 1, permbits );
 }
 
 
-unsigned char sector_is_dir(sector* sect){
+static unsigned char sector_is_dir(sector* sect){
 	return ((sector_fetch_perm_bits(sect) & MHS_IS_DIR) != 0);
 }
 
-MHS_UINT sector_fetch_ownerid(sector* sect){
+static MHS_UINT sector_fetch_ownerid(sector* sect){
 	MHS_UINT loc = 0;
 	loc+= 2; /*permission bits.*/
 	return sector_read_MHS_UINT(sect, loc);
 }
 
-void sector_write_ownerid(sector* sect, MHS_UINT val){
+static void sector_write_ownerid(sector* sect, MHS_UINT val){
 	sector_write_MHS_UINT(sect, 2, val);
 }
 
-MHS_UINT sector_fetch_rptr(sector* sect){
+static MHS_UINT sector_fetch_rptr(sector* sect){
 	MHS_UINT loc = 0;
 	loc+= 2; /*permission bits.*/
 	loc+= sizeof(MHS_UINT); /*ownerid*/
 	return sector_read_MHS_UINT(sect, loc);
 }
 
-void sector_write_rptr(sector* sect, MHS_UINT val){
+static void sector_write_rptr(sector* sect, MHS_UINT val){
 	MHS_UINT loc = 0;
 	loc+= 2; /*permission bits.*/
 	loc+= sizeof(MHS_UINT); /*ownerid*/
 	sector_write_MHS_UINT(sect, loc, val);
 }
 
-MHS_UINT sector_fetch_dptr(sector* sect){
+static MHS_UINT sector_fetch_dptr(sector* sect){
 	MHS_UINT loc = 0;
 	loc+= 2; /*permission bits.*/
 	loc+= sizeof(MHS_UINT); /*ownerid*/
@@ -258,7 +256,7 @@ MHS_UINT sector_fetch_dptr(sector* sect){
 	return sector_read_MHS_UINT(sect, loc);
 }
 
-void sector_write_dptr(sector* sect, MHS_UINT val){
+static void sector_write_dptr(sector* sect, MHS_UINT val){
 	MHS_UINT loc = 0;
 	loc+= 2; /*permission bits.*/
 	loc+= sizeof(MHS_UINT); /*ownerid*/
@@ -267,7 +265,7 @@ void sector_write_dptr(sector* sect, MHS_UINT val){
 }
 
 
-MHS_UINT sector_fetch_size(sector* sect){
+static MHS_UINT sector_fetch_size(sector* sect){
 	MHS_UINT loc = 0;
 	loc+= 2; /*permission bits.*/
 	loc+= sizeof(MHS_UINT); /*ownerid*/
@@ -278,7 +276,7 @@ MHS_UINT sector_fetch_size(sector* sect){
 
 
 
-void sector_write_size(sector* sect, MHS_UINT val){
+static void sector_write_size(sector* sect, MHS_UINT val){
 	MHS_UINT loc = 0;
 	loc+= 2; /*permission bits.*/
 	loc+= sizeof(MHS_UINT); /*ownerid*/
@@ -288,7 +286,7 @@ void sector_write_size(sector* sect, MHS_UINT val){
 }
 
 
-char* sector_fetch_fname(sector* sect){
+static char* sector_fetch_fname(sector* sect){
 	MHS_UINT loc = 0;
 	loc+= 2; /*permission bits.*/
 	loc+= MHS_NATTRIBS * sizeof(MHS_UINT); /*ownerid*/
@@ -298,7 +296,7 @@ char* sector_fetch_fname(sector* sect){
 	return (char*)sect->data + loc;
 }
 
-void namesan(char* name){
+static void namesan(char* name){
 	MHS_UINT i = 0; /*Have we started iterating?*/
 	if(
 		strlen(name) > 
@@ -330,7 +328,7 @@ void namesan(char* name){
 	}
 }
 
-void pathsan(char* path){
+static void pathsan(char* path){
 		/*Remove repeated slashes. Thanks Applejar.*/
 
 	{char* a; char* b;
@@ -359,7 +357,7 @@ void pathsan(char* path){
 	you must strdup it.
 */
 
-void sector_write_fname(sector* sect, char* newname){
+static void sector_write_fname(sector* sect, char* newname){
 	MHS_UINT loc = 0;
 	MHS_UINT i;
 	loc+= 2; /*permission bits.*/
@@ -376,7 +374,7 @@ void sector_write_fname(sector* sect, char* newname){
 	Get the size of a file as a number of sectors.
 */
 
-MHS_UINT sector_fetch_size_in_sectors(sector* sect){
+static MHS_UINT sector_fetch_size_in_sectors(sector* sect){
 	MHS_UINT fakes = sector_fetch_size(sect);
 	fakes += (MHS_SECTOR_SIZE - 1); /*the classic trick for integer ceil() to a multiple.*/
 	fakes /= MHS_SECTOR_SIZE;
@@ -863,6 +861,8 @@ static MHS_UINT get_node_in_directory(MHS_UINT directory_node_ptr, char* target_
 	Follow an absolute path starting at the root.
 	The path may never resolve to the root directory node, as it does not exist.
 	The path may *only* resolve to a file.
+
+	API call, requires path be modifiable.
 */
 static MHS_UINT resolve_path(
 	char* path

@@ -11,6 +11,8 @@
 
 /*How many sectors are on the disk?*/
 #define MHS_DISK_SIZE 0x10000
+/*How many sectors to "skip" for some boot code or MBR*/
+#define MHS_SECTOR_OFFSET 0
 
 FILE* f; /*the disk.*/
 static sector sector_loader;
