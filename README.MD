@@ -76,7 +76,7 @@ a system with very little memory such as a Commodore 64, or the Commander X16, o
 	Obvious and simple optimizations which I think are "safe" are made, but any that significantly increase code complexity
 	are not taken, because bugs will sneak in, lay eggs, and there will be an entire nest before you can blink.
 
-	I heavily avoid recursive algorithms to prevent stack overflows and try to be memor
+	I heavily avoid recursive algorithms to prevent stack overflows and try to be memory-efficient. Malloc is not used.
 
 3) Its closest relative is the RedSea filesystem from Terry A Davis's TempleOS. I came up with the idea for this system
 after reading about his and realized that it would be relatively easy to improve its reliability and robustness with a few
