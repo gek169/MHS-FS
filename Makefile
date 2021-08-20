@@ -1,12 +1,10 @@
-CC= tcc
+CC= cc
 CFLAGS= -O3 -std=c89
 
 all:
 	$(CC) $(CFLAGS) main.c vhd.c -o main.out -lm -g
 
-retest:
-	$(MAKE) clean
-	$(MAKE) all
+retest: clean all
 	./main.out mkdir / homie
 	./main.out mkdir /homie bin
 	./main.out st /homie/bin test main.c
