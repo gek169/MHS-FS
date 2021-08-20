@@ -126,13 +126,13 @@ There are only two relevant data structures in the file system:
 
 The fsnode at [0] is the root node. the root node has special properties:
 
-	* The root node is a file node, but most functions have special code to treat it like a directory. Its permission bits are always `__R__R__ ____ ____`
+* The root node is a file node, but most functions have special code to treat it like a directory. Its permission bits are always `__R__R__ ____ ____`
 
-	* Even though it is treated like a directory node, the files in root are pointed to by its rptr. If the rptr is null, the filesystem is empty.
+* Even though it is treated like a directory node, the files in root are pointed to by its rptr. If the rptr is null, the filesystem is empty.
 
-	* The dptr of the root node points to the allocation bitmap.
+* The dptr of the root node points to the allocation bitmap.
 
-	* The size attribute of the root node is exactly one eighth the usable size of the disk (in sectors). It is the size of the allocation bitmap.
+* The size attribute of the root node is exactly one eighth the usable size of the disk (in sectors). It is the size of the allocation bitmap.
 
 
 
