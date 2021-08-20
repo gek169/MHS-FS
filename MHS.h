@@ -118,7 +118,7 @@ static long MHS_strfind(const char* text, const char* subtext){
 /*Sector size?*/
 #define MHS_SECTOR_SIZE 512
 
-#define BITMAP_START 0x20
+
 
 #define MHS_IS_DIR 32768
 #define MHS_SUID 16384
