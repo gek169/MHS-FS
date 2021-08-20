@@ -19,11 +19,23 @@ testpt2: retest
 	./main.out st /homie/bin test3 Makefile
 	./main.out st /homie/bin test4 main.out
 	./main.out st /homie/bin test5 main.out
-	./main.out st /homie test6 main.out
+	./main.out rm /homie/bin test5 
+	./main.out rm /homie/bin test4 
+	./main.out rm /homie/bin test3 
+	./main.out rm /homie/bin test2  
+	./main.out st /homie/bin test2 Makefile
+	./main.out st /homie/bin test3 Makefile
+	./main.out st /homie/bin test4 main.out
+	./main.out st /homie/bin test5 main.out
+	./main.out st /homie/bin test6 main.out
+	./main.out st /homie/ main.c main.c
+	./main.out st /homie/ vhd.c vhd.c
+	./main.out st /homie test7 main.out
 	./main.out st / test main.out
 	./main.out gt main2.out /homie/bin/test
 	#mv main2.out main.out; chmod +x main.out
-	./main.out gt main2.out /homie/bin/test
+	./main.out gt vhd.c.out /homie/vhd.c
+	./main.out gt main.c.out /homie/main.c
 	./main.out gt main2.out /homie/bin/test
 	#mv main2.out main.out; chmod +x main.out
 	./main.out gt main2.out /homie/bin/test
