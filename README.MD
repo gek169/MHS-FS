@@ -123,7 +123,6 @@ There are only two relevant data structures in the file system:
 
 	(This improves seek times and reduces fragmentation of the disk)
 
-~~~~~~~~~~~
 
 The fsnode at [0] is the root node. the root node has special properties:
 
