@@ -77,11 +77,68 @@ a system with very little memory such as a Commodore 64, or the Commander X16, o
 
 	I heavily avoid recursive algorithms to prevent stack overflows and try to be memory-efficient. Malloc is not used.
 
-3) Its closest relative is the RedSea filesystem from Terry A Davis's TempleOS. I came up with the idea for this system
-after reading about his and realized that it would be relatively easy to improve its reliability and robustness with a few
-simple algorithm tweaks.
+# Structure
 
-4) Buggy. Again, it's brand new.
+There are only two relevant data structures in the file system:
+
+* Fsnode. Contains the metadata of a file, including a pointer to the first byte on disk. Size: 1 sector
+
+	The fundamental and most important elements of the fsnode, are the right pointer, down pointer, size, and permission bits.
+
+
+	The permission bits include a single bit for determining whether the node is a file or a directory, along with UNIX file permission bits.
+
+
+	The size is only used for file nodes, and it indicates how big the file is in bytes. The number of sectors allocated for the file is always exactly large enough to hold this many bytes-
+
+	if you have a 550 byte file and the sector size is 512 bytes, then 2 sectors are used. a 512 byte file will use 1 sector. A 0 byte file 
+
+	is a special case- if it has a dptr, it is assumed to be a single sector in size.
+
+
+	The right pointer (rptr) points to the next fsnode in the same directory. The last entry in the directory has a null (0) rptr.
+
+
+	The down pointer points either to the first entry in a directory, for directory fsnodes, or the data of a file, for file fsnodes.
+
+
+	The structure of the filesystem, then, is a binary tree. File nodes are simple singly-linked-list entries with data,
+
+	and directory nodes use the same singly linked list, but have a child linked list where a file's data pointer is.
+
+
+	you can think of "dptr" as either "down" in a directory, or as "data" in a file.
+
+	
+
+* Allocation bitmap. A special file which marks areas on the disk in use and free. Size is determined by the size of the disk.
+
+	The size of the allocation bitmap is used by the filesystem at runtime to determine the size of the disk- The device is never queried.
+
+	It is assumed that during your disk formatting, you will initialize the filesystem in whatever partition you choose to put it in.
+
+	The location of the allocation bitmap is also important- Data for files cannot be allocated before it. Data is only allocated after the allocation bitmap.
+
+	The space before the allocation bitmap is reserved solely for fsnodes. The space after can be used either for fsnodes, or for data.
+
+	(This improves seek times and reduces fragmentation of the disk)
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The fsnode at [0] is the root node. the root node has special properties:
+
+	* The root node is a file node, but most functions have special code to treat it like a directory. Its permission bits are always `__R__R__ ____ ____`
+
+	* Even though it is treated like a directory node, the files in root are pointed to by its rptr. If the rptr is null, the filesystem is empty.
+
+	* The dptr of the root node points to the allocation bitmap.
+
+	* The size attribute of the root node is exactly one eighth the usable size of the disk (in sectors). It is the size of the allocation bitmap.
+
+
+
+
+
 
 
 
