@@ -24,18 +24,12 @@ extern FILE* f; /*the disk.*/
 */
 
 extern void disk_init();
-
+void disk_print_bitmap();
 
 char ubuf[65535];
 char ubuf2[65535];
 
 static sector usect;
-
-void disk_rebuild_bitmap(){
-	printf("<ERROR> Not implemented.");
-	exit(1);
-}
-
 
 int main(int argc, char** argv){
 	(void)argc;
@@ -55,6 +49,7 @@ int main(int argc, char** argv){
 		printf("  gt patho pathi        : Dump a file from the VHD to a file\r\n");
 		printf("  mkdir pathi name      : Create a directory at pathi with name name.\r\n");
 		printf("  rm dir name           : Delete file or directory name in dir.\r\n");
+		printf("  view                  : View the allocation bitmap.\r\n");
 		return 0;
 	}
 
@@ -96,6 +91,9 @@ int main(int argc, char** argv){
 			argv[2],
 			argv[3]
 		);
+		return 0;
+	}else if(strcmp(argv[1], "view") == 0){
+		disk_print_bitmap();
 		return 0;
 	} else if(strcmp(argv[1], "st") == 0){
 		MHS_UINT i, len;

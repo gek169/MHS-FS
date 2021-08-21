@@ -468,6 +468,8 @@ static MHS_UINT bitmap_find_and_alloc_single_node(
 
 
 
+static char MHS_is_recovering = 0;
+static char MHS_recovering_err_flag = 0;
 /*
 	mark a number of nodes as allocated.
 */
@@ -512,6 +514,15 @@ static void bitmap_alloc_nodes(
 			/*nodeid is the id of an actual node (relative to the current sector in the bitmap...) it needs to be divided by 8.
 				p refers to the specific bit in the byte.
 			*/
+			/*
+				If we are recovering... we must verify that this marked spot is not already used.
+			*/
+			if(MHS_is_recovering){
+				if(s_allocator.data[nodeid/8] & p){
+					MHS_recovering_err_flag = 1;
+					return;
+				}
+			}
 			s_allocator.data[nodeid/8] |= p;
 			/*
 				Can we possibly mask bits for more nodes?
@@ -534,6 +545,9 @@ static void bitmap_alloc_nodes(
 	}
 	return;	
 }
+
+
+
 
 /*
 	mark a number of nodes as de-allocated.
@@ -607,6 +621,8 @@ static void bitmap_dealloc_nodes(
 
 
 
+
+
 static MHS_UINT bitmap_find_and_alloc_multiple_nodes(
 	/*Information attained from a previous call to get_allocation_bitmap_info*/
 	const MHS_UINT bitmap_size,
@@ -668,6 +684,11 @@ static MHS_UINT bitmap_find_and_alloc_multiple_nodes(
 	}
 	return 0; /*Failed allocation.*/
 }
+
+
+
+
+
 
 
 
@@ -777,6 +798,100 @@ static void unlock_modify_bit(){
 	store_sector(sector_fetch_dptr(&a_lock), &b_lock);
 }
 
+
+
+
+static char fsnode_marker(
+	MHS_UINT* stacky,
+	MHS_UINT stacksize, 
+	MHS_UINT bitmap_size,
+	MHS_UINT bitmap_where,
+	MHS_UINT depth, /*Current stack depth.*/
+	MHS_UINT active_node /*This is the node we are responsible for traversing.*/
+){
+	if(depth >= stacksize) return 1; /*Failure!*/
+	/*
+		First, mark it as used.
+	*/
+
+	top:;
+	{
+		bitmap_alloc_nodes(
+			bitmap_size,
+			bitmap_where,
+			active_node,
+			1
+		);
+		if(MHS_recovering_err_flag) return 1;
+
+		a_lock = load_sector(active_node);
+
+
+
+		if(sector_is_dir(&a_lock)){ /*Directory with contents.*/
+			/*Send someone out to walk our children*/
+			if(sector_fetch_dptr(&a_lock))
+				if(fsnode_marker(
+					stacky, stacksize, 
+					bitmap_size, bitmap_where,
+					depth + 1,
+					sector_fetch_dptr(&a_lock)
+				)) return 1;
+		} else if(sector_fetch_dptr(&a_lock)) {/*File with contents.*/
+			/**/
+			MHS_UINT size = sector_fetch_size(&a_lock);
+			size += MHS_SECTOR_SIZE - 1;
+			size /= MHS_SECTOR_SIZE;
+			if(size == 0) size = 1;
+			bitmap_alloc_nodes(
+				bitmap_size,
+				bitmap_where,
+				sector_fetch_dptr(&a_lock),
+				size
+			);
+			if(MHS_recovering_err_flag) return 1;
+		}
+		/*go right!*/
+		if(sector_fetch_rptr(&a_lock)) {
+			active_node = sector_fetch_rptr(&a_lock);
+			goto top;
+		}
+	}
+	return 0;
+}
+
+static char bitmap_recover(
+	MHS_UINT* stacky,
+	MHS_UINT stacksize
+){
+	MHS_UINT bitmap_where;
+	MHS_UINT bitmap_size;
+	get_allocation_bitmap_info(&bitmap_size, &bitmap_where);
+
+	/*It should already be...*/
+	lock_modify_bit();
+	MHS_is_recovering = 1;
+	/*Clear the entire bitmap to zero.*/
+	bitmap_dealloc_nodes(
+		bitmap_size,
+		bitmap_where,
+		1,
+		(bitmap_size * 8 - 1)
+	);
+	if(fsnode_marker(
+		stacky, stacksize, 
+		bitmap_size,
+		bitmap_where,
+		0,  /*Depth of zero.*/
+		0 /*Root node.*/
+	)){
+		if(MHS_recovering_err_flag) return 2;
+		return 1;
+	}
+
+	MHS_is_recovering = 0;
+	return 0;
+}
 
 
 static sector s_walker;

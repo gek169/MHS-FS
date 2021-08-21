@@ -34,6 +34,78 @@ void store_sector(MHS_UINT where, sector* s){
 }
 
 
+/*
+	Rebuild the bitmap from a power failure.
+*/
+
+MHS_UINT disk_traversal_stack[0x10000];
+void disk_rebuild_bitmap(){
+	printf("<Rebuilding bitmap with max recurse depth of 0x10000, or 64k...\r\n");
+	if(bitmap_recover(disk_traversal_stack, 0x10000)){
+		printf("<ERROR> Disk recovery failed.\r\n");
+		if(MHS_recovering_err_flag)
+			printf("<FATAL ERROR> Disk recovery failed. Cannot recover disk.\r\n");
+	}
+	exit(1);
+}
+
+
+void disk_print_bitmap(){
+	MHS_UINT bitmap_size, bitmap_where, i;
+
+	get_allocation_bitmap_info(&bitmap_size, &bitmap_where);
+
+	i = 0;
+	printf("\r\n<BITMAP>\r\n");
+	for(; i < bitmap_size; i++){ /*For all the bytes in the bitmap...*/
+		char a = 0;
+		char b = 0;
+		if( i % (MHS_SECTOR_SIZE) == 0)
+			load_sector(bitmap_where + i / (MHS_SECTOR_SIZE));
+		/*Print the byte.*/
+		switch(sector_loader.data[i % MHS_SECTOR_SIZE] >> 4){
+			case 0: a = '0';break;
+			case 1: a = '1';break;
+			case 2: a = '2';break;
+			case 3: a = '3';break;
+			case 4: a = '4';break;
+			case 5: a = '5';break;
+			case 6: a = '6';break;
+			case 7: a = '7';break;
+			case 8: a = '8';break;
+			case 9: a = '9';break;
+			case 10: a = 'a';break;
+			case 11: a = 'b';break;
+			case 12: a = 'c';break;
+			case 13: a = 'd';break;
+			case 14: a = 'e';break;
+			case 15: a = 'f';break;
+		}
+		b = a;
+		switch(sector_loader.data[i % MHS_SECTOR_SIZE] & 15){
+			case 0: a = '0';break;
+			case 1: a = '1';break;
+			case 2: a = '2';break;
+			case 3: a = '3';break;
+			case 4: a = '4';break;
+			case 5: a = '5';break;
+			case 6: a = '6';break;
+			case 7: a = '7';break;
+			case 8: a = '8';break;
+			case 9: a = '9';break;
+			case 10: a = 'a';break;
+			case 11: a = 'b';break;
+			case 12: a = 'c';break;
+			case 13: a = 'd';break;
+			case 14: a = 'e';break;
+			case 15: a = 'f';break;
+		}
+		printf("%c%c", b, a);
+		if( (i & 63) == 63) printf("\r\n");
+	}
+}
+
+
 void disk_init(){
 	MHS_UINT allocation_bitmap_size;
 

@@ -4,6 +4,16 @@ CFLAGS= -O3 -std=c89
 all:
 	$(CC) $(CFLAGS) main.c vhd.c -o main.out -lm -g
 
+test3: clean all
+	./main.out mkdir / bruhfolder
+	./main.out mkdir /bruhfolder otherfolder
+	./main.out st /bruhfolder/otherfolder main.c main.c
+	./main.out st /bruhfolder/otherfolder main.out main.out
+	./main.out st /bruhfolder/otherfolder main2.out main.out
+	./main.out st /bruhfolder/otherfolder main3.out main.out
+	./main.out st /bruhfolder/ main4.out main.out
+
+
 retest: clean all
 	./main.out mkdir / homie
 	./main.out mkdir /homie bin
