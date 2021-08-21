@@ -457,10 +457,14 @@ static MHS_UINT bitmap_find_and_alloc_single_node(
 			bitmap_offset = i / (8 * MHS_SECTOR_SIZE);
 			s_allocator = load_sector(bitmap_offset + bitmap_where);
 		}
-		p = s_allocator.data[ (i%MHS_SECTOR_SIZE)/8];
-		q = p & (1<< ((i%MHS_SECTOR_SIZE)%8));
+		/*
+			p = s_allocator.data[ (i%MHS_SECTOR_SIZE)/8];
+			q = p & (1<< ((i%MHS_SECTOR_SIZE)%8));
+		*/
+		p = s_allocator.data[ (i%(MHS_SECTOR_SIZE * 8))/8];
+		q = p & (1<< ((i%(MHS_SECTOR_SIZE * 8))%8)); /*We cannot optimize this line due to the modifiable MHS_SECTOR_SIZE */
 		if(q == 0) { /*Free slot! Mark it as used.*/
-			s_allocator.data[ (i%MHS_SECTOR_SIZE)/8] = p | (1<< ((i%MHS_SECTOR_SIZE)%8));
+			s_allocator.data[ (i%(MHS_SECTOR_SIZE * 8))/8 ] = p | (1<< ((i%MHS_SECTOR_SIZE)%8));
 			store_sector(bitmap_where + bitmap_offset, &s_allocator);
 			return i;
 		}
