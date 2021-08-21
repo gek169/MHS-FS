@@ -169,6 +169,7 @@ int main(int argc, char** argv){
 			MHS_UINT len;
 			MHS_UINT j = 0;
 			MHS_strcpy(ubuf, argv[2]);
+			a = file_read_node(ubuf, &usect);
 			if(a == 0) return 1;
 			len = sector_fetch_size(&usect);
 			if(len == 0) return 1;

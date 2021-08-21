@@ -7,8 +7,6 @@ all:
 test3: clean all
 	./main.out mkdir / bruhfolder
 	./main.out mkdir /bruhfolder otherfolder
-	#this should put a hole in the filesystem, causing a sort of fragmentation.
-
 	./main.out st /bruhfolder/otherfolder main.c main.c
 	./main.out st /bruhfolder/otherfolder vhd.c vhd.c
 	./main.out st /bruhfolder/otherfolder MHS.h MHS.h
@@ -27,6 +25,10 @@ test3: clean all
 	./main.out st /bruhfolder/otherfolder main3.out main.out
 	./main.out st /bruhfolder/otherfolder testing_realloc main.c
 	./main.out st /bruhfolder/otherfolder testing_realloc main.out
+	./main.out st /bruhfolder/otherfolder testing_rm main.out
+	./main.out rm /bruhfolder/otherfolder testing_rm
+	./main.out st /bruhfolder/otherfolder testing_rm main.c
+	./main.out gt should_be_identical_to_main.c.out /bruhfolder/otherfolder/main.c
 	./main.out st /bruhfolder/ main4.out main.out
 	./main.out st /bruhfolder/ main5.out main.out
 	./main.out st /bruhfolder/ main6.out main.out
@@ -45,6 +47,53 @@ test3: clean all
 	./main.out st /bruhfolder/ main19.out main.out
 	./main.out st /bruhfolder/ main20.out main.out
 
+test3clean:
+
+	
+
+	#The last argument of these is ignored, dont worry.
+	./main.out rm /bruhfolder/otherfolder main.c main.c
+	./main.out rm /bruhfolder/otherfolder vhd.c vhd.c
+	./main.out rm /bruhfolder/otherfolder MHS.h MHS.h
+	./main.out rm /bruhfolder/otherfolder MHS2.h MHS.h
+	./main.out rm /bruhfolder/otherfolder MHS3.h MHS.h
+	./main.out rm /bruhfolder/otherfolder LICENSE LICENSE
+	./main.out rm /bruhfolder/otherfolder LICENSE2 LICENSE
+	./main.out rm /bruhfolder/otherfolder LICENSE3 LICENSE
+	./main.out rm /bruhfolder/otherfolder LICENSE4 LICENSE
+	./main.out rm /bruhfolder/otherfolder LICENSE4 LICENSE
+	./main.out rm /bruhfolder/otherfolder LICENSE4 LICENSE
+	./main.out rm /bruhfolder/otherfolder LICENSE5 LICENSE
+	./main.out rm /bruhfolder/otherfolder LICENSE6 LICENSE
+	./main.out rm /bruhfolder/otherfolder main.out main.out
+	./main.out rm /bruhfolder/otherfolder main2.out main.out
+	./main.out rm /bruhfolder/otherfolder main3.out main.out
+	./main.out rm /bruhfolder/otherfolder testing_realloc main.c
+	./main.out rm /bruhfolder/otherfolder testing_realloc main.out
+	./main.out rm /bruhfolder/otherfolder testing_rm main.out
+	./main.out rm /bruhfolder/otherfolder testing_rm
+	./main.out rm /bruhfolder/otherfolder testing_rm main.c
+	./main.out rm should_be_identical_to_main.c.out /bruhfolder/otherfolder/main.c
+	./main.out rm /bruhfolder/ main4.out main.out
+	./main.out rm /bruhfolder/ main5.out main.out
+	./main.out rm /bruhfolder/ main6.out main.out
+	./main.out rm /bruhfolder/ main7.out main.out
+	./main.out rm /bruhfolder/ main8.out main.out
+	./main.out rm /bruhfolder/ main9.out main.out
+	./main.out rm /bruhfolder/ main10.out main.out
+	./main.out rm /bruhfolder/ main11.out main.out
+	./main.out rm /bruhfolder/ main12.out main.out
+	./main.out rm /bruhfolder/ main13.out main.out
+	./main.out rm /bruhfolder/ main14.out main.out
+	./main.out rm /bruhfolder/ main15.out main.out
+	./main.out rm /bruhfolder/ main16.out main.out
+	./main.out rm /bruhfolder/ main17.out main.out
+	./main.out rm /bruhfolder/ main18.out main.out
+	./main.out rm /bruhfolder/ main19.out main.out
+	./main.out rm /bruhfolder/ main20.out main.out
+	./main.out rm /bruhfolder otherfolder
+	./main.out rm / bruhfolder
+	./main.out view
 
 retest: clean all
 	./main.out mkdir / homie
