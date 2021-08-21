@@ -472,7 +472,7 @@ static MHS_UINT bitmap_find_and_alloc_single_node(
 	mark a number of nodes as allocated.
 */
 static void bitmap_alloc_nodes(
-		/*Information attained from a previous call to get_allocation_bitmap_info*/
+	/*Information attained from a previous call to get_allocation_bitmap_info*/
 	const MHS_UINT bitmap_size,
 	const MHS_UINT bitmap_where,
 	/*What node do you want to actually allocate?*/
