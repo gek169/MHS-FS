@@ -77,10 +77,12 @@
 
 */
 
-/*
-	Implement these functions:
-*/
 
+
+/*
+	maximum size of the path.
+*/
+#define MHS_MAX_PATH_LENGTH 1024
 
 
 
@@ -808,12 +810,8 @@ static char fsnode_marker(
 	MHS_UINT depth, /*Current stack depth.*/
 	MHS_UINT active_node /*This is the node we are responsible for traversing.*/
 ){
-	if(depth >= stacksize) return 1; /*Failure!*/
-	/*
-		First, mark it as used.
-	*/
-
 	top:;
+	if(depth >= stacksize) return 1; /*Failure!*/
 	{
 		bitmap_alloc_nodes(
 			bitmap_size,
@@ -830,18 +828,29 @@ static char fsnode_marker(
 		if(sector_is_dir(&a_lock)){ /*Directory with contents.*/
 			/*Send someone out to walk our children*/
 			if(sector_fetch_dptr(&a_lock))
+			{
+				stacky[depth++] = active_node;
+				active_node = sector_fetch_dptr(&a_lock);
+				goto top;
+				continuation:;
+				/*Alternative: use hardware stack.*/
+				/*
 				if(fsnode_marker(
 					stacky, stacksize, 
 					bitmap_size, bitmap_where,
 					depth + 1,
 					sector_fetch_dptr(&a_lock)
 				)) return 1;
+				*/
+			}
+			
 		} else if(sector_fetch_dptr(&a_lock)) {/*File with contents.*/
 			/**/
 			MHS_UINT size = sector_fetch_size(&a_lock);
 			size += MHS_SECTOR_SIZE - 1;
 			size /= MHS_SECTOR_SIZE;
 			if(size == 0) size = 1;
+			
 			bitmap_alloc_nodes(
 				bitmap_size,
 				bitmap_where,
@@ -854,6 +863,12 @@ static char fsnode_marker(
 		if(sector_fetch_rptr(&a_lock)) {
 			active_node = sector_fetch_rptr(&a_lock);
 			goto top;
+		}
+		/*Attempt to pop off the stack.*/
+		if(depth){
+			depth--;
+			active_node = stacky[depth];
+			goto continuation;
 		}
 	}
 	return 0;
@@ -1284,8 +1299,7 @@ static char node_remove_from_dir(
 /*
 	API call for creating an empty file or directory.
 */
-
-static char pathbuf[0x10000];
+static char pathbuf[MHS_MAX_PATH_LENGTH];
 static char namebuf[MHS_SECTOR_SIZE - (MHS_NATTRIBS * sizeof(MHS_UINT) + 2)];
 static sector s_worker;
 static sector s_worker2;
@@ -1307,7 +1321,7 @@ static char file_createempty(
 #endif
 		return 0;
 	} /*Cannot create a directory with no name!*/
-	if(strlen(path) > 65535) {
+	if(strlen(path) >(MHS_MAX_PATH_LENGTH - 1)) {
 #ifdef MHS_DEBUG
 		MHS_LOG("file_createempty: path too long.\r\n");
 #endif
@@ -1423,7 +1437,7 @@ static char file_read_sector(
 #endif
 		return 0;
 	} /*Cannot create a directory with no name!*/
-	if(strlen(path) > 65535) {
+	if(strlen(path) > (MHS_MAX_PATH_LENGTH - 1)) {
 #ifdef MHS_DEBUG
 	MHS_LOG("file_read_sector: path too long.\r\n");
 #endif
@@ -1472,7 +1486,7 @@ static char file_read_node(
 #endif
 		return 0;
 	} /*Cannot create a directory with no name!*/
-	if(strlen(path) > 65535) {
+	if(strlen(path) > (MHS_MAX_PATH_LENGTH - 1)) {
 #ifdef MHS_DEBUG
 	MHS_LOG("file_read_node: path too long.\r\n");
 #endif
@@ -1515,7 +1529,7 @@ static char file_write_sector(
 #endif
 		return 0;
 	} /*Cannot create a directory with no name!*/
-	if(strlen(path) > 65535) {
+	if(strlen(path) > (MHS_MAX_PATH_LENGTH - 1)) {
 #ifdef MHS_DEBUG
 		MHS_LOG("file_write_sector: path too long.\r\n");
 #endif
@@ -1585,7 +1599,7 @@ static char file_get_dir_entry_by_index(
 #endif
 		return 0;
 	} /*Cannot create a directory with no name!*/
-	if(strlen(path) > 65535) {
+	if(strlen(path) > (MHS_MAX_PATH_LENGTH - 1)) {
 #ifdef MHS_DEBUG
 		MHS_LOG("file_get_dir_entry_by_index: path too long.\r\n");
 #endif
@@ -1638,7 +1652,7 @@ static char file_realloc(
 #endif
 		return 0;
 	} /*Cannot create a directory with no name!*/
-	if(strlen(path) > 65535) {
+	if(strlen(path) > (MHS_MAX_PATH_LENGTH - 1)) {
 #ifdef MHS_DEBUG
 		MHS_LOG("file_realloc: path_to_directory is too long..\r\n");
 #endif
@@ -1793,7 +1807,7 @@ static char file_delete(
 #endif
 		return 0;
 	} /*no name!*/
-	if(strlen(path_to_directory) > 65535) {
+	if(strlen(path_to_directory) > (MHS_MAX_PATH_LENGTH - 1)) {
 #ifdef MHS_DEBUG
 		MHS_LOG("file_delete: path_to_directory is too long.\r\n");
 #endif
@@ -1832,7 +1846,7 @@ static char file_delete(
 	){
 		MHS_strcpy(pathbuf, path_to_directory);		pathsan(pathbuf);
 		MHS_strcpy(namebuf, fname); 					namesan(namebuf);
-		if(strlen(pathbuf) + strlen(namebuf) > 65534) { 
+		if(strlen(pathbuf) + strlen(namebuf) > (MHS_MAX_PATH_LENGTH - 2)) {
 #ifdef MHS_DEBUG
 			MHS_LOG("<ERROR> file_delete: pathbuf + namebuf too large.\r\n");
 #endif

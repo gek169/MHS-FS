@@ -77,6 +77,12 @@ a system with very little memory such as a Commodore 64, or the Commander X16, o
 
 	I heavily avoid recursive algorithms to prevent stack overflows and try to be memory-efficient. Malloc is not used.
 
+	The only recursive algorithm used is that in the disk recovery function. fsnode_marker recursively marks nodes as used, it is
+
+	called by bitmap_recover.
+
+	However, function recursion is *not* used. a software stack is used which can be controlled.
+
 # Structure
 
 There are only two relevant data structures in the file system:
