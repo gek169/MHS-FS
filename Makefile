@@ -4,6 +4,13 @@ CFLAGS= -O3 -std=c89
 all:
 	$(CC) $(CFLAGS) main.c vhd.c -o main.out -lm -g
 
+test4:
+	./main.out mkdir / a
+	./main.out mkdir /a b
+	# I wonder what happens...
+	./main.out st /a/b entire_disk disk.dsk
+
+
 test3: clean all
 	./main.out mkdir / bruhfolder
 	./main.out mkdir /bruhfolder otherfolder
