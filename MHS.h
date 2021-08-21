@@ -658,11 +658,10 @@ static MHS_UINT bitmap_find_and_alloc_multiple_nodes(
 			bitmap_offset = i / (8 * MHS_SECTOR_SIZE);
 			s_allocator = load_sector(bitmap_offset + bitmap_where);
 		}
-		p = s_allocator.data[ (i%MHS_SECTOR_SIZE)/8];
-		q = p & (1<< ((i%MHS_SECTOR_SIZE)%8));
+		p = s_allocator.data[ (i%(MHS_SECTOR_SIZE * 8))/8];
+		q = p & (1<< ((i%(MHS_SECTOR_SIZE * 8))%8)); /*We cannot optimize this line due to the modifiable MHS_SECTOR_SIZE */
 		if(q == 0) { /*Free slot! Increment run.*/
 			run++;
-			
 			if(run >= needed) {
 				MHS_UINT start = i - (run-1);
 #ifdef MHS_DEBUG
@@ -888,7 +887,6 @@ static char bitmap_recover(
 		if(MHS_recovering_err_flag) return 2;
 		return 1;
 	}
-
 	MHS_is_recovering = 0;
 	return 0;
 }
