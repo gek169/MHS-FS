@@ -7,11 +7,43 @@ all:
 test3: clean all
 	./main.out mkdir / bruhfolder
 	./main.out mkdir /bruhfolder otherfolder
+	#this should put a hole in the filesystem, causing a sort of fragmentation.
+
 	./main.out st /bruhfolder/otherfolder main.c main.c
+	./main.out st /bruhfolder/otherfolder vhd.c vhd.c
+	./main.out st /bruhfolder/otherfolder MHS.h MHS.h
+	./main.out st /bruhfolder/otherfolder MHS2.h MHS.h
+	./main.out st /bruhfolder/otherfolder MHS3.h MHS.h
+	./main.out st /bruhfolder/otherfolder LICENSE LICENSE
+	./main.out st /bruhfolder/otherfolder LICENSE2 LICENSE
+	./main.out st /bruhfolder/otherfolder LICENSE3 LICENSE
+	./main.out st /bruhfolder/otherfolder LICENSE4 LICENSE
+	./main.out st /bruhfolder/otherfolder LICENSE4 LICENSE
+	./main.out st /bruhfolder/otherfolder LICENSE4 LICENSE
+	./main.out st /bruhfolder/otherfolder LICENSE5 LICENSE
+	./main.out st /bruhfolder/otherfolder LICENSE6 LICENSE
 	./main.out st /bruhfolder/otherfolder main.out main.out
 	./main.out st /bruhfolder/otherfolder main2.out main.out
 	./main.out st /bruhfolder/otherfolder main3.out main.out
+	./main.out st /bruhfolder/otherfolder testing_realloc main.c
+	./main.out st /bruhfolder/otherfolder testing_realloc main.out
 	./main.out st /bruhfolder/ main4.out main.out
+	./main.out st /bruhfolder/ main5.out main.out
+	./main.out st /bruhfolder/ main6.out main.out
+	./main.out st /bruhfolder/ main7.out main.out
+	./main.out st /bruhfolder/ main8.out main.out
+	./main.out st /bruhfolder/ main9.out main.out
+	./main.out st /bruhfolder/ main10.out main.out
+	./main.out st /bruhfolder/ main11.out main.out
+	./main.out st /bruhfolder/ main12.out main.out
+	./main.out st /bruhfolder/ main13.out main.out
+	./main.out st /bruhfolder/ main14.out main.out
+	./main.out st /bruhfolder/ main15.out main.out
+	./main.out st /bruhfolder/ main16.out main.out
+	./main.out st /bruhfolder/ main17.out main.out
+	./main.out st /bruhfolder/ main18.out main.out
+	./main.out st /bruhfolder/ main19.out main.out
+	./main.out st /bruhfolder/ main20.out main.out
 
 
 retest: clean all

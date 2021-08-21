@@ -47,6 +47,7 @@ int main(int argc, char** argv){
 		printf("  ls pathi              : list the files in the directory at path.\r\n");
 		printf("  st pathi name patho   : Store an external file into the VHD, into a file named name.\r\n");
 		printf("  gt patho pathi        : Dump a file from the VHD to a file\r\n");
+		printf("  cat pathi             : Dump a file from the VHD to stdout\r\n");
 		printf("  mkdir pathi name      : Create a directory at pathi with name name.\r\n");
 		printf("  rm dir name           : Delete file or directory name in dir.\r\n");
 		printf("  view                  : View the allocation bitmap.\r\n");
@@ -163,6 +164,28 @@ int main(int argc, char** argv){
 			}
 		}
 		return 0;
+	} else if(strcmp(argv[1], "cat") == 0) {
+			char a;
+			MHS_UINT len;
+			MHS_UINT j = 0;
+			MHS_strcpy(ubuf, argv[2]);
+			if(a == 0) return 1;
+			len = sector_fetch_size(&usect);
+			if(len == 0) return 1;
+			j =sector_fetch_dptr(&usect); 
+			if(j == 0) return 1;
+			if(sector_fetch_perm_bits(&usect) & MHS_IS_DIR ) return 1;
+			
+			for(;len > 0; len -= MHS_SECTOR_SIZE){
+				usect = load_sector(j++);
+				if(len > MHS_SECTOR_SIZE){
+					fwrite(usect.data, MHS_SECTOR_SIZE, 1, stdout); fflush(stdout);
+				}else{
+					fwrite(usect.data, len, 1, stdout); fflush(stdout);
+					return 0;
+				}
+			}
+			return 0;
 	} else {
 		printf("\r\nBad Command\r\n");
 		return 1;
