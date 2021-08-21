@@ -34,7 +34,7 @@ test3: clean all
 	./main.out st /bruhfolder/otherfolder testing_realloc main.out
 	./main.out st /bruhfolder/otherfolder testing_rm main.out
 	./main.out rm /bruhfolder/otherfolder testing_rm
-	./main.out st /bruhfolder/otherfolder testing_rm main.c
+	./main.out st /bruhfolder/otherfolder testing_rm Makefile
 	./main.out gt should_be_identical_to_main.c.out /bruhfolder/otherfolder/main.c
 	./main.out st /bruhfolder/ main4.out main.out
 	./main.out st /bruhfolder/ main5.out main.out
@@ -53,6 +53,10 @@ test3: clean all
 	./main.out st /bruhfolder/ main18.out main.out
 	./main.out st /bruhfolder/ main19.out main.out
 	./main.out st /bruhfolder/ main20.out main.out
+	./main.out st /bruhfolder/ main21.out main.out
+	./main.out st /bruhfolder/ main22.out main.out
+	./main.out st /bruhfolder/ main23.out main.out
+	./main.out st /bruhfolder/ main24.out main.out
 
 test3clean:
 
@@ -98,6 +102,10 @@ test3clean:
 	./main.out rm /bruhfolder/ main18.out main.out
 	./main.out rm /bruhfolder/ main19.out main.out
 	./main.out rm /bruhfolder/ main20.out main.out
+	./main.out rm /bruhfolder/ main21.out main.out
+	./main.out rm /bruhfolder/ main22.out main.out
+	./main.out rm /bruhfolder/ main23.out main.out
+	./main.out rm /bruhfolder/ main24.out main.out
 	./main.out rm /bruhfolder otherfolder
 	./main.out rm / bruhfolder
 	./main.out view

@@ -60,7 +60,7 @@ void disk_print_bitmap(){
 	for(; i < bitmap_size; i++){ /*For all the bytes in the bitmap...*/
 		char a = 0;
 		char b = 0;
-		if( i % (MHS_SECTOR_SIZE) == 0)
+		if( i % MHS_SECTOR_SIZE == 0)
 			load_sector(bitmap_where + i / (MHS_SECTOR_SIZE));
 		/*Print the byte.*/
 		switch(sector_loader.data[i % MHS_SECTOR_SIZE] >> 4){
