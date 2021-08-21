@@ -439,9 +439,10 @@ static void get_allocation_bitmap_info(
 static MHS_UINT bitmap_find_and_alloc_single_node(
 	/*Information attained from a previous call to get_allocation_bitmap_info*/
 	const MHS_UINT bitmap_size,
-	MHS_UINT bitmap_where /*HUUUUGE WARNING!!!! WE MODIFY THIS IN THE FUNCTION!!!!*/
+	MHS_UINT bitmap_where
 ){
  	MHS_UINT i = 1; /*We do **NOT** start at zero.*/
+ 	MHS_UINT bitmap_offset = 0; /*Represents the currently loaded sector.*/
  	s_allocator = load_sector(bitmap_where);
 	for(;i < (bitmap_size * 8);i++){
 		unsigned char p; /*before masking.*/
@@ -449,22 +450,18 @@ static MHS_UINT bitmap_find_and_alloc_single_node(
 		/*
 			Did we just cross into the next sector?
 			If so, load the next sector!
-
-			
 		*/
-		/**/
-		if(i > (8 * MHS_SECTOR_SIZE))
-			if((i/8) % MHS_SECTOR_SIZE == 0){
-				bitmap_where++;
-				s_allocator = load_sector(bitmap_where);
-			}
+		if(bitmap_offset != i / (8 * MHS_SECTOR_SIZE)){
+			bitmap_offset = i / (8 * MHS_SECTOR_SIZE);
+			s_allocator = load_sector(bitmap_offset + bitmap_where);
+		}
 		p = s_allocator.data[ (i%MHS_SECTOR_SIZE)/8];
 		q = p & (1<< ((i%MHS_SECTOR_SIZE)%8));
 		if(q == 0) { /*Free slot! Mark it as used.*/
 			s_allocator.data[ (i%MHS_SECTOR_SIZE)/8] = p | (1<< ((i%MHS_SECTOR_SIZE)%8));
-			store_sector(bitmap_where, &s_allocator);
+			store_sector(bitmap_where + bitmap_offset, &s_allocator);
 			return i;
-		} 
+		}
 	}
 	return 0; /*Failed allocation.*/
 }
@@ -619,7 +616,6 @@ static MHS_UINT bitmap_find_and_alloc_multiple_nodes(
 ){
  	MHS_UINT i = bitmap_where + ((bitmap_size + MHS_SECTOR_SIZE - 1) / MHS_SECTOR_SIZE); /*Begin searching the disk beyond the bitmap.*/
  	MHS_UINT run = 0;
- 	char have_iterated = 0;
  	MHS_UINT bitmap_offset = i / (8 * MHS_SECTOR_SIZE); /*What sector of the bitmap are we searching?*/
 #ifdef MHS_DEBUG
 	MHS_LOG("bitmap_find_and_alloc_multiple_nodes: attempting to find %lu nodes starting at %lu\r\n", 
@@ -642,8 +638,8 @@ static MHS_UINT bitmap_find_and_alloc_multiple_nodes(
 			Did we just cross into the next sector?
 			If so, load the next sector!
 		*/
-		if(have_iterated && (i/8) % MHS_SECTOR_SIZE == 0){
-			bitmap_offset++;
+		if(bitmap_offset != i / (8 * MHS_SECTOR_SIZE)){
+			bitmap_offset = i / (8 * MHS_SECTOR_SIZE);
 			s_allocator = load_sector(bitmap_offset + bitmap_where);
 		}
 		p = s_allocator.data[ (i%MHS_SECTOR_SIZE)/8];
@@ -669,7 +665,6 @@ static MHS_UINT bitmap_find_and_alloc_multiple_nodes(
 				return start;
 			}
 		} else run = 0; /*We reached an allocated bit. This is not valid.*/
-		have_iterated = 1;
 	}
 	return 0; /*Failed allocation.*/
 }
