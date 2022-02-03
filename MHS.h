@@ -188,11 +188,11 @@ void store_sector(MHS_UINT where, sector* s);
 
 
 static void sector_write_byte(sector* sect, MHS_UINT loc, unsigned char byte){
-	loc %= (MHS_SECTOR_SIZE - 1);sect->data[loc] = byte;
+	loc %= (MHS_SECTOR_SIZE);sect->data[loc] = byte;
 }
 
 static unsigned char sector_read_byte(sector* sect, MHS_UINT loc){
-	loc %= (MHS_SECTOR_SIZE - 1);return sect->data[loc];
+	loc %= (MHS_SECTOR_SIZE);return sect->data[loc];
 }
 
 static void sector_write_MHS_UINT(sector* sect, MHS_UINT loc, MHS_UINT val){
